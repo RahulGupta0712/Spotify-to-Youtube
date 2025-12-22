@@ -34,8 +34,13 @@ if (!YOUTUBE_CLIENT_ID || !YOUTUBE_CLIENT_SECRET) {
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(session({ secret: SESSION_SECRET, resave: false, saveUninitialized: true }));
-
+app.set('trust proxy', 1); // if behind reverse proxy (Heroku/nginx)
+app.use(session({
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: true, sameSite: 'lax', httpOnly: true }
+}));
 // --- HELPER FUNCTIONS ---
 
 // Utility function for OAuth state
@@ -229,8 +234,14 @@ async function createYouTubePlaylistAndAddVideos(oauth2Client, title, descriptio
         }
     }
 
+    const addedVideos = [];
+    const failedVideos = [];
+
     for (const vid of videoIds) {
-        if (!vid) continue;
+        if (!vid) {
+            failedVideos.push({ videoId: vid, reason: 'No video id (search failed)' });
+            continue;
+        }
         try {
             await youtube.playlistItems.insert({
                 part: ['snippet'],
@@ -241,17 +252,20 @@ async function createYouTubePlaylistAndAddVideos(oauth2Client, title, descriptio
                     }
                 }
             });
-            // console.log(`Added video ${vid} to playlist.`); // Suppressing excessive logs
+            addedVideos.push(vid);
         } catch (err) {
-            if (isExisting && err.code === 403) {
+            const message = (err && err.message) || (err && err.response && JSON.stringify(err.response.data)) || 'Unknown error';
+            // If permission denied on existing playlist, bubble up
+            if (isExisting && err && (err.code === 403 || (err.response && err.response.status === 403))) {
                 throw new Error('Permission Denied: Cannot add videos to this playlist.');
             }
-            console.warn('Failed adding video to playlist', vid, err.message || err);
+            console.warn('Failed adding video to playlist', vid, message);
+            failedVideos.push({ videoId: vid, reason: message });
         }
         await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    return playlistId;
+    return { playlistId, addedVideos, failedVideos };
 }
 
 function makeOAuth2Client() {
@@ -426,10 +440,16 @@ for (let i = 0; i < tracks.length; i++) {
 
     try {
         console.log("7. Creating/Adding to YouTube Playlist...");
-        const finalPlaylistId = await createYouTubePlaylistAndAddVideos(oauth2Client, spPlaylistTitle, spPlaylistDesc, videoIds, existingPlaylistId);
+        const result = await createYouTubePlaylistAndAddVideos(oauth2Client, spPlaylistTitle, spPlaylistDesc, videoIds, existingPlaylistId);
+        const finalPlaylistId = result.playlistId;
         const youtubePlaylistUrl = `https://www.youtube.com/playlist?list=${finalPlaylistId}`;
         console.log(`8. SUCCESS! Playlist URL: ${youtubePlaylistUrl}`);
-        return res.json({ youtubePlaylistUrl });
+
+        // New: include lists of added and failed videos in response and logs
+        console.log(`Added videos (${result.addedVideos.length}):`, result.addedVideos.slice(0, 50));
+        console.log(`Failed videos (${result.failedVideos.length}):`, result.failedVideos.slice(0, 50));
+
+        return res.json({ youtubePlaylistUrl, added: result.addedVideos, failed: result.failedVideos });
     } catch (err) {
         if (err.message === 'Permission Denied: Cannot add videos to this playlist.') {
             console.warn('Playlist insertion failed due to 403 Permission Denied. Returning error to frontend.');
@@ -704,6 +724,17 @@ app.get('/', (req, res) => {
             
             if (res.ok) {
                 statusEl.innerHTML = 'Done. <a href="' + json.youtubePlaylistUrl + '" target="_blank">Open YouTube playlist</a>';
+                // show added / failed lists to user in the log panel
+                const added = json.added || [];
+                const failed = json.failed || [];
+                const logEl = document.getElementById('log');
+                let out = 'Added (' + added.length + '):\n';
+                if (added.length) out += added.join('\n');
+                else out += '(none)';
+                out += '\n\nFailed (' + failed.length + '):\n';
+                if (failed.length) out += failed.map(f => (f.videoId || 'null') + ' - ' + (f.reason || '')).join('\n');
+                else out += '(none)';
+                logEl.textContent = out;
             } else if (res.status === 403 && json.error === 'Permission Denied: Cannot add videos to this playlist.') {
                 statusEl.innerHTML = '⚠️ <span class="text-warning">WARNING: Cannot add videos to that YouTube Playlist ID (Permission Denied). Check ownership or clear the field.</span>';
                 document.getElementById('existingPlaylistId').focus();
