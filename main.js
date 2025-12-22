@@ -61,8 +61,8 @@ function parseSpotifyPlaylistId(urlOrId) {
 
 async function fetchAllSpotifyTracks(playlistId, token) {
     let tracks = [];
-    let url = playlistId === 'LIKED' 
-        ? 'https://api.spotify.com/v1/me/tracks?limit=50' 
+    let url = playlistId === 'LIKED'
+        ? 'https://api.spotify.com/v1/me/tracks?limit=50'
         : `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`;
 
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -161,7 +161,6 @@ app.get('/stream-convert', async (req, res) => {
 
     try {
         const playlistId = parseSpotifyPlaylistId(playlistUrl);
-        if (playlistId === 'LIKED' && !req.session.spotifyTokens) return send({ error: 'Login to Spotify first for Liked songs.' });
         if (!req.session.googleTokens) return send({ error: 'Login to YouTube first' });
 
         const spToken = req.session.spotifyTokens?.access_token || await getSpotifyAppToken();
@@ -169,50 +168,75 @@ app.get('/stream-convert', async (req, res) => {
         oauth.setCredentials(req.session.googleTokens);
         const youtube = google.youtube({ version: 'v3', auth: oauth });
 
-        // --- VALIDATE EXISTING YOUTUBE PLAYLIST FIRST ---
-        if (existingId) {
-            try {
-                await youtube.playlists.list({ part: 'id', id: existingId.trim() });
-            } catch (e) {
-                return send({ error: "YouTube Playlist not found. Ensure the ID is correct and belongs to the channel you logged in with (check Brand vs Personal)." });
-            }
-        }
-
-        let tracks = await fetchAllSpotifyTracks(playlistId, spToken);
-        if (tracks === null) return send({ error: 'Could not access Spotify playlist. Try logging in to Spotify.' });
-        if (tracks.length === 0) return send({ error: 'The playlist is empty.' });
-
-        let playlistName = "Converted Playlist";
-        if (playlistId === 'LIKED') {
-            playlistName = "My Spotify Liked Songs";
-        } else {
-            const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, { headers: { Authorization: `Bearer ${spToken}` } });
-            if (metaRes.ok) {
-                const metaData = await metaRes.json();
-                playlistName = metaData.name;
-            }
-        }
-
-        send({ info: `Found ${tracks.length} tracks. Initializing YouTube...`, total: tracks.length });
-
+        // --- IMPROVED YOUTUBE PLAYLIST VALIDATION ---
         let ytId = existingId?.trim();
+        if (ytId) {
+            try {
+                // We check 'mine: true' to see if it's one of YOUR playlists (Brand or Personal)
+                const check = await youtube.playlists.list({
+                    part: 'snippet',
+                    mine: true,
+                    maxResults: 50 
+                });
+                
+                const ownedPlaylist = check.data.items.find(p => p.id === ytId);
+                
+                if (!ownedPlaylist) {
+                    // If not in 'mine', try a direct ID lookup as a fallback
+                    const fallback = await youtube.playlists.list({
+                        part: 'snippet',
+                        id: ytId
+                    });
+                    
+                    if (fallback.data.items.length === 0) {
+                        return send({ error: "YouTube Playlist not found. Make sure you are logged into the CORRECT Brand Account channel in the popup." });
+                    }
+                    console.log("Found playlist via fallback, but might not have edit rights.");
+                } else {
+                    console.log("Confirmed: You own this playlist:", ownedPlaylist.snippet.title);
+                }
+            } catch (e) {
+                return send({ error: "YouTube API Error: " + e.message });
+            }
+        }
+
+        // Fetch tracks...
+        let tracks = await fetchAllSpotifyTracks(playlistId, spToken);
+        if (!tracks) return send({ error: 'Spotify access failed.' });
+
+        // Create playlist if no ID provided
         if (!ytId) {
-            const p = await youtube.playlists.insert({ part: 'snippet,status', requestBody: { snippet: { title: playlistName }, status: { privacyStatus: 'private' } } });
+            const p = await youtube.playlists.insert({ 
+                part: 'snippet,status', 
+                requestBody: { 
+                    snippet: { title: "Converted Playlist" }, 
+                    status: { privacyStatus: 'private' } 
+                } 
+            });
             ytId = p.data.id;
         }
+
+        send({ info: `Found ${tracks.length} tracks. Starting transfer...`, total: tracks.length });
 
         for (let i = 0; i < tracks.length; i++) {
             const track = tracks[i];
             const vid = await searchYouTube(`${track.name} ${track.artist} official audio`);
             if (vid) {
                 try {
-                    await youtube.playlistItems.insert({ part: 'snippet', requestBody: { snippet: { playlistId: ytId, resourceId: { kind: 'youtube#video', videoId: vid } } } });
+                    await youtube.playlistItems.insert({ 
+                        part: 'snippet', 
+                        requestBody: { 
+                            snippet: { playlistId: ytId, resourceId: { kind: 'youtube#video', videoId: vid } } 
+                        } 
+                    });
                     send({ success: true, name: track.name, count: i + 1 });
                 } catch (e) {
-                    send({ success: false, name: track.name, reason: 'YT Insert Failed (Check permissions)', count: i + 1 });
+                    // This is where the Brand Account mismatch usually reveals itself
+                    if (e.errors && e.errors[0].reason === 'playlistNotFound') {
+                        return send({ error: "Error: You don't have permission to edit this playlist. You likely logged into your Personal account instead of your Brand Account." });
+                    }
+                    send({ success: false, name: track.name, reason: 'Insert Failed', count: i + 1 });
                 }
-            } else {
-                send({ success: false, name: track.name, reason: 'Not Found', count: i + 1 });
             }
             await new Promise(r => setTimeout(r, 600));
         }
