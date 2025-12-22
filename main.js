@@ -1,6 +1,6 @@
 /*
 ---------------------------------------------------------
-SPOTIFY -> YOUTUBE PLAYLIST CONVERTER (Real-time & Auto-Update)
+SPOTIFY -> YOUTUBE PLAYLIST CONVERTER (Final - Optimized Polling)
 ---------------------------------------------------------
 */
 const express = require('express');
@@ -216,7 +216,8 @@ app.get('/', (req, res) => {
         .user-info { display: flex; align-items: center; gap: 12px; }
         .user-info img { width: 32px; height: 32px; border-radius: 50%; }
         .platform-label { font-size: 10px; text-transform: uppercase; color: #888; display: block; }
-        .logout { color: #ff4444; text-decoration: none; font-size: 11px; border: 1px solid #ff4444; padding: 5px 10px; border-radius: 5px; }
+        .logout { color: #ff4444; text-decoration: none; font-size: 11px; border: 1px solid #ff4444; padding: 5px 10px; border-radius: 5px; transition: 0.2s; }
+        .logout:hover { background: #ff4444; color: white; }
         .logout.disabled { opacity: 0.2; pointer-events: none; }
         input { width: 100%; padding: 14px; margin: 10px 0; background: #2c2c2c; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; }
         button { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
@@ -257,8 +258,8 @@ app.get('/', (req, res) => {
 
 <script>
     let isConverting = false;
+    let pollInterval = null;
 
-    // POLL FOR PROFILE UPDATES
     async function updateProfiles() {
         if (isConverting) return;
         const res = await fetch('/auth/profiles');
@@ -266,29 +267,55 @@ app.get('/', (req, res) => {
         const container = document.getElementById('profiles');
         container.innerHTML = '';
         
-        if(data.spotify) {
+        let spotifyLinked = !!data.spotify;
+        let youtubeLinked = !!data.youtube;
+
+        if(spotifyLinked) {
             document.getElementById('btn_sp').style.display = 'none';
             container.innerHTML += \`<div class="user-row spotify"><div class="user-info"><img src="\${data.spotify.image || ''}"><div><span class="platform-label">Spotify Account</span>\${data.spotify.name}</div></div><a href="/auth/logout/spotify" class="logout nav-link">Disconnect</a></div>\`;
         } else { document.getElementById('btn_sp').style.display = 'block'; }
         
-        if(data.youtube) {
+        if(youtubeLinked) {
             document.getElementById('btn_yt').style.display = 'none';
             container.innerHTML += \`<div class="user-row youtube"><div class="user-info"><img src="\${data.youtube.image || ''}"><div><span class="platform-label">YouTube Account</span>\${data.youtube.name}</div></div><a href="/auth/logout/youtube" class="logout nav-link">Disconnect</a></div>\`;
         } else { document.getElementById('btn_yt').style.display = 'block'; }
+
+        // STOP POLLING if both are connected
+        if (spotifyLinked && youtubeLinked && pollInterval) {
+            console.log("Polling stopped: Both accounts linked.");
+            clearInterval(pollInterval);
+            pollInterval = null;
+        } 
+        // RESUME POLLING if one is missing and not already polling
+        else if ((!spotifyLinked || !youtubeLinked) && !pollInterval) {
+            startPolling();
+        }
+    }
+
+    function startPolling() {
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(updateProfiles, 2000);
     }
     
-    // Auto-refresh every 2 seconds unless converting
-    setInterval(updateProfiles, 2000);
+    // Start initial check
     updateProfiles();
 
-    document.getElementById('btn_sp').onclick = () => window.open('/auth/spotify', '_blank', 'width=500,height=600');
-    document.getElementById('btn_yt').onclick = () => window.open('/auth/youtube', '_blank', 'width=500,height=600');
+    document.getElementById('btn_sp').onclick = () => {
+        window.open('/auth/spotify', '_blank', 'width=500,height=600');
+        startPolling();
+    };
+    document.getElementById('btn_yt').onclick = () => {
+        window.open('/auth/youtube', '_blank', 'width=500,height=600');
+        startPolling();
+    };
 
     document.getElementById('convert').onclick = () => {
         const url = document.getElementById('playlistUrl').value;
         if(!url) return alert("Enter a Spotify URL");
 
         isConverting = true;
+        if(pollInterval) clearInterval(pollInterval); // Stop polling during work
+
         const log = document.getElementById('log');
         const convertBtn = document.getElementById('convert');
         const navLinks = document.querySelectorAll('.nav-link');
