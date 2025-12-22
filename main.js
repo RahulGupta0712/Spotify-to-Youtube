@@ -1,6 +1,6 @@
 /*
 ---------------------------------------------------------
-SPOTIFY -> YOUTUBE PLAYLIST CONVERTER (Full Restoration)
+SPOTIFY -> YOUTUBE PLAYLIST CONVERTER (Brand Account & ID Fix)
 ---------------------------------------------------------
 */
 const express = require('express');
@@ -65,17 +65,13 @@ async function fetchAllSpotifyTracks(playlistId, token) {
         ? 'https://api.spotify.com/v1/me/tracks?limit=50' 
         : `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`;
 
-    let pages = 0;
-    while (url && pages < 2) {
-        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) break;
-        const data = await res.json();
-        data.items.forEach(item => {
-            if (item.track) tracks.push({ name: item.track.name, artist: item.track.artists[0].name });
-        });
-        url = data.next;
-        pages++;
-    }
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    data.items.forEach(item => {
+        if (item.track) tracks.push({ name: item.track.name, artist: item.track.artists[0].name });
+    });
     return tracks;
 }
 
@@ -106,6 +102,7 @@ app.get('/auth/profiles', async (req, res) => {
             const oauth = makeOAuth2Client();
             oauth.setCredentials(req.session.googleTokens);
             const youtube = google.youtube({ version: 'v3', auth: oauth });
+            // Using mine:true specifically to target the selected Brand/Personal channel
             const yRes = await youtube.channels.list({ part: 'snippet', mine: true });
             const chan = yRes.data.items[0].snippet;
             profiles.youtube = { name: chan.title, image: chan.thumbnails.default.url };
@@ -142,7 +139,7 @@ app.get('/spotify/callback', async (req, res) => {
 
 app.get('/auth/youtube', (req, res) => {
     const oauth = makeOAuth2Client();
-    res.redirect(oauth.generateAuthUrl({ access_type: 'offline', scope: ['https://www.googleapis.com/auth/youtube'], prompt: 'consent' }));
+    res.redirect(oauth.generateAuthUrl({ access_type: 'offline', scope: ['https://www.googleapis.com/auth/youtube'], prompt: 'select_account consent' }));
 });
 
 app.get('/oauth2callback', async (req, res) => {
@@ -164,14 +161,27 @@ app.get('/stream-convert', async (req, res) => {
 
     try {
         const playlistId = parseSpotifyPlaylistId(playlistUrl);
-        if (playlistId === 'LIKED' && !req.session.spotifyTokens) {
-            return send({ error: 'To convert "LIKED" songs, you must login to Spotify first.' });
-        }
+        if (playlistId === 'LIKED' && !req.session.spotifyTokens) return send({ error: 'Login to Spotify first for Liked songs.' });
         if (!req.session.googleTokens) return send({ error: 'Login to YouTube first' });
 
         const spToken = req.session.spotifyTokens?.access_token || await getSpotifyAppToken();
-        
-        // --- RESTORED NAME FEATURE ---
+        const oauth = makeOAuth2Client();
+        oauth.setCredentials(req.session.googleTokens);
+        const youtube = google.youtube({ version: 'v3', auth: oauth });
+
+        // --- VALIDATE EXISTING YOUTUBE PLAYLIST FIRST ---
+        if (existingId) {
+            try {
+                await youtube.playlists.list({ part: 'id', id: existingId.trim() });
+            } catch (e) {
+                return send({ error: "YouTube Playlist not found. Ensure the ID is correct and belongs to the channel you logged in with (check Brand vs Personal)." });
+            }
+        }
+
+        let tracks = await fetchAllSpotifyTracks(playlistId, spToken);
+        if (tracks === null) return send({ error: 'Could not access Spotify playlist. Try logging in to Spotify.' });
+        if (tracks.length === 0) return send({ error: 'The playlist is empty.' });
+
         let playlistName = "Converted Playlist";
         if (playlistId === 'LIKED') {
             playlistName = "My Spotify Liked Songs";
@@ -183,14 +193,9 @@ app.get('/stream-convert', async (req, res) => {
             }
         }
 
-        const tracks = await fetchAllSpotifyTracks(playlistId, spToken);
-        send({ info: `Found ${tracks.length} tracks from "${playlistName}".`, total: tracks.length });
+        send({ info: `Found ${tracks.length} tracks. Initializing YouTube...`, total: tracks.length });
 
-        const oauth = makeOAuth2Client();
-        oauth.setCredentials(req.session.googleTokens);
-        const youtube = google.youtube({ version: 'v3', auth: oauth });
-
-        let ytId = existingId;
+        let ytId = existingId?.trim();
         if (!ytId) {
             const p = await youtube.playlists.insert({ part: 'snippet,status', requestBody: { snippet: { title: playlistName }, status: { privacyStatus: 'private' } } });
             ytId = p.data.id;
@@ -200,8 +205,12 @@ app.get('/stream-convert', async (req, res) => {
             const track = tracks[i];
             const vid = await searchYouTube(`${track.name} ${track.artist} official audio`);
             if (vid) {
-                await youtube.playlistItems.insert({ part: 'snippet', requestBody: { snippet: { playlistId: ytId, resourceId: { kind: 'youtube#video', videoId: vid } } } });
-                send({ success: true, name: track.name, count: i + 1 });
+                try {
+                    await youtube.playlistItems.insert({ part: 'snippet', requestBody: { snippet: { playlistId: ytId, resourceId: { kind: 'youtube#video', videoId: vid } } } });
+                    send({ success: true, name: track.name, count: i + 1 });
+                } catch (e) {
+                    send({ success: false, name: track.name, reason: 'YT Insert Failed (Check permissions)', count: i + 1 });
+                }
             } else {
                 send({ success: false, name: track.name, reason: 'Not Found', count: i + 1 });
             }
@@ -212,7 +221,6 @@ app.get('/stream-convert', async (req, res) => {
     finally { res.end(); }
 });
 
-// --- FRONTEND ---
 app.get('/', (req, res) => {
     res.send(`<!doctype html>
 <html>
@@ -236,7 +244,7 @@ app.get('/', (req, res) => {
         .progress-container { width: 100%; background: #333; border-radius: 20px; height: 12px; margin: 25px 0; display: none; overflow: hidden; }
         .progress-fill { height: 100%; background: var(--spotify); width: 0%; transition: width 0.4s ease; }
         .log-box { background: #000; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 11px; height: 150px; overflow-y: auto; margin-top: 15px; border: 1px solid #333; }
-        .green { color: var(--spotify); } .red { color: #ff4444; }
+        .green { color: var(--spotify); }
         .results-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
         .buckets-container { display: flex; gap: 20px; width: 90%; max-width: 800px; height: 60vh; margin-top: 20px; }
         .bucket { flex: 1; background: #252525; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; opacity: 0; transform: translateY(20px); transition: 0.5s; }
@@ -347,7 +355,13 @@ app.get('/', (req, res) => {
                 source.close();
                 showOverlay(d.url, successTracks, failedTracks);
             }
-            if(d.error) { alert(d.error); location.reload(); }
+            if(d.error) { 
+                alert(d.error); 
+                isConverting = false;
+                convertBtn.disabled = false;
+                navLinks.forEach(link => link.classList.remove('disabled'));
+                source.close(); 
+            }
             log.scrollTop = log.scrollHeight;
         };
     };
