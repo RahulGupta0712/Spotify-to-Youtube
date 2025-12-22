@@ -234,14 +234,8 @@ async function createYouTubePlaylistAndAddVideos(oauth2Client, title, descriptio
         }
     }
 
-    const addedVideos = [];
-    const failedVideos = [];
-
     for (const vid of videoIds) {
-        if (!vid) {
-            failedVideos.push({ videoId: vid, reason: 'No video id (search failed)' });
-            continue;
-        }
+        if (!vid) continue;
         try {
             await youtube.playlistItems.insert({
                 part: ['snippet'],
@@ -252,20 +246,17 @@ async function createYouTubePlaylistAndAddVideos(oauth2Client, title, descriptio
                     }
                 }
             });
-            addedVideos.push(vid);
+            // console.log(`Added video ${vid} to playlist.`); // Suppressing excessive logs
         } catch (err) {
-            const message = (err && err.message) || (err && err.response && JSON.stringify(err.response.data)) || 'Unknown error';
-            // If permission denied on existing playlist, bubble up
-            if (isExisting && err && (err.code === 403 || (err.response && err.response.status === 403))) {
+            if (isExisting && err.code === 403) {
                 throw new Error('Permission Denied: Cannot add videos to this playlist.');
             }
-            console.warn('Failed adding video to playlist', vid, message);
-            failedVideos.push({ videoId: vid, reason: message });
+            console.warn('Failed adding video to playlist', vid, err.message || err);
         }
         await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    return { playlistId, addedVideos, failedVideos };
+    return playlistId;
 }
 
 function makeOAuth2Client() {
@@ -440,16 +431,10 @@ for (let i = 0; i < tracks.length; i++) {
 
     try {
         console.log("7. Creating/Adding to YouTube Playlist...");
-        const result = await createYouTubePlaylistAndAddVideos(oauth2Client, spPlaylistTitle, spPlaylistDesc, videoIds, existingPlaylistId);
-        const finalPlaylistId = result.playlistId;
+        const finalPlaylistId = await createYouTubePlaylistAndAddVideos(oauth2Client, spPlaylistTitle, spPlaylistDesc, videoIds, existingPlaylistId);
         const youtubePlaylistUrl = `https://www.youtube.com/playlist?list=${finalPlaylistId}`;
         console.log(`8. SUCCESS! Playlist URL: ${youtubePlaylistUrl}`);
-
-        // New: include lists of added and failed videos in response and logs
-        console.log(`Added videos (${result.addedVideos.length}):`, result.addedVideos.slice(0, 50));
-        console.log(`Failed videos (${result.failedVideos.length}):`, result.failedVideos.slice(0, 50));
-
-        return res.json({ youtubePlaylistUrl, added: result.addedVideos, failed: result.failedVideos });
+        return res.json({ youtubePlaylistUrl });
     } catch (err) {
         if (err.message === 'Permission Denied: Cannot add videos to this playlist.') {
             console.warn('Playlist insertion failed due to 403 Permission Denied. Returning error to frontend.');
