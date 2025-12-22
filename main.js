@@ -18,9 +18,12 @@ const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const YOUTUBE_CLIENT_ID = process.env.YOUTUBE_CLIENT_ID;
 const YOUTUBE_CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET;
-const YOUTUBE_REDIRECT_URI = process.env.YOUTUBE_REDIRECT_URI || `http://127.0.0.1:${PORT}/oauth2callback`;
-const SPOTIFY_REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || `http://127.0.0.1:${PORT}/spotify/callback`;
-const SESSION_SECRET = process.env.SESSION_SECRET || 'change_this_secret';
+const YOUTUBE_REDIRECT_URI = process.env.YOUTUBE_REDIRECT_URI
+// || `http://127.0.0.1:${PORT}/oauth2callback`;
+const SPOTIFY_REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI
+//  || `http://127.0.0.1:${PORT}/spotify/callback`;
+const SESSION_SECRET = process.env.SESSION_SECRET 
+// || 'change_this_secret';
 
 if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
     console.warn('WARNING: SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET is missing. Spotify features requiring user auth will not work.');
