@@ -41,6 +41,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: { secure: true, sameSite: 'lax', httpOnly: true }
 }));
+app.use(express.static('public'));
 // --- HELPER FUNCTIONS ---
 
 // Utility function for OAuth state
