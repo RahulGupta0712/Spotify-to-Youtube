@@ -169,6 +169,12 @@ app.get('/stream-convert', async (req, res) => {
 
     try {
         const playlistId = parseSpotifyPlaylistId(playlistUrl);
+        
+        // CHECK FOR LIKED SONGS LOGIN REQUIREMENT
+        if (playlistId === 'LIKED' && !req.session.spotifyTokens) {
+            return send({ error: 'You must login to Spotify first to fetch the LIKED songs.' });
+        }
+
         const spToken = req.session.spotifyTokens?.access_token || await getSpotifyAppToken();
 
         let title = "My Spotify Playlist";
