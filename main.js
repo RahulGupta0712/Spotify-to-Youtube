@@ -29,15 +29,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'secure_production_secret_k
 
 // Helmet helps secure Express apps by setting various HTTP headers
 app.use(helmet({
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"], // Needed for the inline JS in your HTML
-            styleSrc: ["'self'", "'unsafe-inline'"],  // Needed for the inline CSS
-            imgSrc: ["'self'", "data:", "https:"],
-            upgradeInsecureRequests: [],
-        },
-    },
+    contentSecurityPolicy: false
 }));
 
 app.use(bodyParser.json());
@@ -240,6 +232,32 @@ function makeOAuth2Client() {
 
 // --- AUTH ROUTES ---
 
+app.get('/auth/profiles', async (req, res) => {
+    let profiles = { spotify: null, youtube: null };
+
+    if (req.session.spotifyTokens) {
+        const sRes = await fetch('https://api.spotify.com/v1/me', {
+            headers: { Authorization: `Bearer ${req.session.spotifyTokens.access_token}` }
+        });
+        if (sRes.ok) {
+            const sData = await sRes.json();
+            profiles.spotify = { name: sData.display_name, image: sData.images[0]?.url };
+        }
+    }
+
+    if (req.session.googleTokens) {
+        const oauth2Client = new google.auth.OAuth2();
+        oauth2Client.setCredentials(req.session.googleTokens);
+        const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+        try {
+            const yRes = await youtube.channels.list({ part: 'snippet', mine: true });
+            const chan = yRes.data.items[0].snippet;
+            profiles.youtube = { name: chan.title, image: chan.thumbnails.default.url };
+        } catch (e) {}
+    }
+    res.json(profiles);
+});
+
 app.get('/auth/spotify', (req, res) => {
     const state = generateRandomString(16);
     req.session.spotifyState = state;
@@ -316,144 +334,166 @@ app.get('/auth/status', (req, res) => {
 app.post('/convert', async (req, res) => {
     const { playlistUrl, existingPlaylistId } = req.body;
     const userTokens = req.session.spotifyTokens;
+    const googleTokens = req.session.googleTokens;
 
-    if (!playlistUrl) return res.status(400).json({ error: 'Missing playlistUrl' });
-    const playlistId = parseSpotifyPlaylistId(playlistUrl);
-    if (!playlistId) return res.status(400).json({ error: 'Invalid Playlist ID' });
-
-    if (!req.session.googleTokens) {
-        return res.status(401).json({ error: 'YouTube sign-in required' });
-    }
+    if (!googleTokens) return res.status(401).json({ error: 'YouTube Login Required' });
 
     try {
-        // 1. Fetch Spotify Tracks
-        const tracks = await fetchAllSpotifyTracks(playlistId, userTokens);
-        if (!tracks.length) return res.status(400).json({ error: 'No tracks found' });
-
-        // 2. Search YouTube
-        const videoIds = [];
-        for (let i = 0; i < tracks.length; i++) {
-            const vid = await searchYouTubeMostViewed(buildYouTubeQuery(tracks[i]));
-            videoIds.push(vid);
-            // VERCEL WARNING: 
-            // We use a small timeout to prevent rapid-fire scraping, 
-            // but this increases execution time.
-            await new Promise(r => setTimeout(r, 500)); 
+        const playlistId = parseSpotifyPlaylistId(playlistUrl);
+        let tokenToUse = userTokens ? userTokens.access_token : await getSpotifyAppToken();
+        
+        // 1. Get Spotify Playlist Name
+        let spotifyTitle = "Converted Playlist";
+        if (playlistId !== 'LIKED') {
+            const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+                headers: { Authorization: `Bearer ${tokenToUse}` }
+            });
+            const metaData = await metaRes.json();
+            spotifyTitle = metaData.name || spotifyTitle;
+        } else {
+            spotifyTitle = "My Spotify Liked Songs";
         }
 
-        const validVideos = videoIds.filter(v => v !== null);
-
-        // 3. Create/Update YouTube Playlist
-        const oauth2Client = makeOAuth2Client();
-        oauth2Client.setCredentials(req.session.googleTokens);
-
-        const title = playlistId === 'LIKED' ? 'Spotify Liked Songs' : `Spotify Import: ${playlistId}`;
-        const desc = `Imported on ${new Date().toISOString()}`;
-
-        const result = await createYouTubePlaylistAndAddVideos(oauth2Client, title, desc, validVideos, existingPlaylistId);
+        // 2. Fetch Tracks
+        const tracks = await fetchAllSpotifyTracks(playlistId, userTokens);
         
-        return res.json({ 
-            youtubePlaylistUrl: `https://www.youtube.com/playlist?list=${result.playlistId}`,
-            added: result.results.added,
-            failed: result.results.failed
+        // 3. Search & Add
+        const oauth2Client = new google.auth.OAuth2(process.env.YOUTUBE_CLIENT_ID, process.env.YOUTUBE_CLIENT_SECRET, process.env.YOUTUBE_REDIRECT_URI);
+        oauth2Client.setCredentials(googleTokens);
+        const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+        let ytPlaylistId = existingPlaylistId;
+        if (!ytPlaylistId) {
+            const createP = await youtube.playlists.insert({
+                part: ['snippet', 'status'],
+                requestBody: {
+                    snippet: { title: spotifyTitle },
+                    status: { privacyStatus: 'private' }
+                }
+            });
+            ytPlaylistId = createP.data.id;
+        }
+
+        const report = { success: [], failed: [] };
+
+        for (const track of tracks) {
+            const query = `${track.name} ${track.artists[0]}`;
+            const videoId = await searchYouTubeMostViewed(query);
+            
+            if (videoId) {
+                try {
+                    await youtube.playlistItems.insert({
+                        part: ['snippet'],
+                        requestBody: {
+                            snippet: { playlistId: ytPlaylistId, resourceId: { kind: 'youtube#video', videoId } }
+                        }
+                    });
+                    report.success.push(`${track.name} - ${track.artists[0]}`);
+                } catch (e) {
+                    report.failed.push(`${track.name} (YouTube Error)`);
+                }
+            } else {
+                report.failed.push(`${track.name} (Not found on YT)`);
+            }
+            await new Promise(r => setTimeout(r, 600)); // Delay to prevent rate limits
+        }
+
+        res.json({ 
+            youtubePlaylistUrl: `https://www.youtube.com/playlist?list=${ytPlaylistId}`,
+            report 
         });
 
     } catch (err) {
-        console.error(err);
-        return res.status(500).json({ error: err.message });
+        res.status(500).json({ error: err.message });
     }
 });
 
 // --- FRONTEND ---
 app.get('/', (req, res) => {
-    // Note the Favicon link: href="/favicon.ico"
-    // Also simplified CSS for brevity
     res.send(`<!doctype html>
 <html>
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/favicon.ico" type="image/x-icon"> 
-    <title>Spotify to YouTube</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <title>Convertify</title>
     <style>
-        body { font-family: sans-serif; background: #121212; color: #fff; padding: 20px; display:flex; justify-content:center; }
-        .container { max-width: 600px; width: 100%; background: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-        input, button { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 4px; box-sizing: border-box; }
-        input { background: #333; border: 1px solid #444; color: white; }
-        button { border: none; font-weight: bold; cursor: pointer; }
-        .btn-sp { background: #1DB954; color: white; }
-        .btn-yt { background: #ff0000; color: white; }
-        .log { background: #000; padding: 10px; font-family: monospace; height: 150px; overflow-y: scroll; font-size: 12px; }
-        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
-        .red { background: red; } .green { background: #00ff00; }
+        body { font-family: 'Inter', sans-serif; background: #121212; color: white; display: flex; justify-content: center; padding: 40px; }
+        .card { width: 100%; max-width: 600px; background: #1e1e1e; padding: 30px; border-radius: 12px; }
+        .user-badge { display: flex; align-items: center; background: #2a2a2a; padding: 8px; border-radius: 20px; margin-bottom: 10px; font-size: 13px; }
+        .user-badge img { width: 24px; height: 24px; border-radius: 50%; margin-right: 10px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; background: #2c2c2c; border: 1px solid #444; color: white; border-radius: 6px; }
+        button { width: 100%; padding: 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-convert { background: #1DB954; color: white; margin-top: 10px; }
+        .log-box { background: #000; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; height: 200px; overflow-y: auto; margin-top: 20px; border: 1px solid #333; }
+        .green { color: #1DB954; } .red { color: #ff4444; }
     </style>
 </head>
 <body>
-<div class="container">
-    <h2 style="text-align:center">🎵 Playlist Converter</h2>
-    
-    <div style="display:flex; gap:10px; margin-bottom:20px;">
-        <div style="flex:1; background:#2a2a2a; padding:10px; border-radius:4px;">
-            Spotify: <span id="sp_stat"><span class="status-dot red"></span>Off</span>
-            <button id="btn_sp" class="btn-sp" style="margin-top:5px; font-size:12px;">Connect</button>
+    <div class="card">
+        <h2>Spotify ➔ YouTube</h2>
+        
+        <div id="profiles">
+            <div id="sp_profile" class="user-badge" style="display:none"></div>
+            <div id="yt_profile" class="user-badge" style="display:none"></div>
         </div>
-        <div style="flex:1; background:#2a2a2a; padding:10px; border-radius:4px;">
-            YouTube: <span id="yt_stat"><span class="status-dot red"></span>Off</span>
-            <button id="btn_yt" class="btn-yt" style="margin-top:5px; font-size:12px;">Connect</button>
-        </div>
+
+        <button id="btn_sp" style="background:#1DB954; color:white; margin-bottom:10px;">Login Spotify</button>
+        <button id="btn_yt" style="background:#ff0000; color:white;">Login YouTube</button>
+
+        <hr style="border:0; border-top:1px solid #333; margin:20px 0;">
+
+        <input id="playlistUrl" placeholder="Spotify Playlist URL or 'LIKED'">
+        <input id="existingId" placeholder="Existing YouTube Playlist ID (Optional)">
+        <button id="convert" class="btn-convert">Start Conversion</button>
+
+        <div id="status" style="margin-top:15px; text-align:center;"></div>
+        <div class="log-box" id="log">Logs: Ready.</div>
     </div>
 
-    <input id="playlistUrl" placeholder="Spotify Playlist URL or 'LIKED'" />
-    <input id="existingPlaylistId" placeholder="Existing YouTube Playlist ID (Optional)" />
-    <button id="convert" style="background: #333; color: white;">Start Conversion</button>
-    
-    <div id="status" style="margin: 10px 0; font-weight: bold;"></div>
-    <div class="log" id="log">Logs will appear here...</div>
-</div>
-
 <script>
-    const logEl = document.getElementById('log');
-    const log = (msg) => { logEl.innerText += '\\n' + msg; logEl.scrollTop = logEl.scrollHeight; }
-
-    const updateAuth = async () => {
-        const r1 = await fetch('/auth/spotify/status').then(r=>r.json());
-        const r2 = await fetch('/auth/status').then(r=>r.json());
-        
-        document.getElementById('sp_stat').innerHTML = r1.signedIn ? '<span class="status-dot green"></span>On' : '<span class="status-dot red"></span>Off';
-        document.getElementById('btn_sp').style.display = r1.signedIn ? 'none' : 'block';
-        
-        document.getElementById('yt_stat').innerHTML = r2.signedIn ? '<span class="status-dot green"></span>On' : '<span class="status-dot red"></span>Off';
-        document.getElementById('btn_yt').style.display = r2.signedIn ? 'none' : 'block';
+    async function refreshProfiles() {
+        const res = await fetch('/auth/profiles');
+        const data = await res.json();
+        if(data.spotify) {
+            document.getElementById('btn_sp').style.display = 'none';
+            document.getElementById('sp_profile').style.display = 'flex';
+            document.getElementById('sp_profile').innerHTML = \`<img src="\${data.spotify.image || ''}"> Connected: \${data.spotify.name}\`;
+        }
+        if(data.youtube) {
+            document.getElementById('btn_yt').style.display = 'none';
+            document.getElementById('yt_profile').style.display = 'flex';
+            document.getElementById('yt_profile').innerHTML = \`<img src="\${data.youtube.image || ''}"> Connected: \${data.youtube.name}\`;
+        }
     }
-    updateAuth();
+    refreshProfiles();
 
-    document.getElementById('btn_sp').onclick = () => { window.open('/auth/spotify'); const i=setInterval(()=> {updateAuth();}, 2000); };
-    document.getElementById('btn_yt').onclick = () => { window.open('/auth/youtube'); const i=setInterval(()=> {updateAuth();}, 2000); };
+    document.getElementById('btn_sp').onclick = () => { window.open('/auth/spotify'); setInterval(refreshProfiles, 3000); };
+    document.getElementById('btn_yt').onclick = () => { window.open('/auth/youtube'); setInterval(refreshProfiles, 3000); };
 
     document.getElementById('convert').onclick = async () => {
-        const url = document.getElementById('playlistUrl').value;
-        const exId = document.getElementById('existingPlaylistId').value;
-        if(!url) return alert('Enter URL');
-        
-        document.getElementById('status').innerText = 'Working... This may take time...';
-        log('Starting conversion process...');
+        const log = document.getElementById('log');
+        const status = document.getElementById('status');
+        log.innerHTML = 'Starting...';
+        status.innerText = 'Processing tracks...';
 
-        try {
-            const res = await fetch('/convert', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ playlistUrl: url, existingPlaylistId: exId })
-            });
-            const data = await res.json();
-            
-            if(!res.ok) throw new Error(data.error || 'Error');
-            
-            document.getElementById('status').innerHTML = '<a href="'+data.youtubePlaylistUrl+'" target="_blank" style="color:#4CAF50">Success! Click here.</a>';
-            log('Added ' + data.added.length + ' videos.');
-            if(data.failed.length) log('Failed to add ' + data.failed.length + ' videos.');
-        } catch(e) {
-            document.getElementById('status').innerText = 'Error: ' + e.message;
-            log('Error: ' + e.message);
+        const res = await fetch('/convert', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ 
+                playlistUrl: document.getElementById('playlistUrl').value,
+                existingPlaylistId: document.getElementById('existingId').value
+            })
+        });
+        const data = await res.json();
+
+        if(res.ok) {
+            status.innerHTML = \`<a href="\${data.youtubePlaylistUrl}" target="_blank" style="color:#1DB954">Conversion Complete! View Playlist</a>\`;
+            let html = '<b>SUCCESSFULLY ADDED:</b><br>';
+            data.report.success.forEach(s => html += \`<span class="green">✔ \${s}</span><br>\`);
+            html += '<br><b>FAILED:</b><br>';
+            data.report.failed.forEach(f => html += \`<span class="red">✘ \${f}</span><br>\`);
+            log.innerHTML = html;
+        } else {
+            status.innerHTML = \`<span class="red">Error: \${data.error}</span>\`;
         }
     };
 </script>
