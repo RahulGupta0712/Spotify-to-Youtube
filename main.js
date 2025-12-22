@@ -1,6 +1,6 @@
 /*
 ---------------------------------------------------------
-SPOTIFY -> YOUTUBE PLAYLIST CONVERTER (Final - Optimized Polling)
+SPOTIFY -> YOUTUBE PLAYLIST CONVERTER (Full Restoration)
 ---------------------------------------------------------
 */
 const express = require('express');
@@ -170,9 +170,21 @@ app.get('/stream-convert', async (req, res) => {
         if (!req.session.googleTokens) return send({ error: 'Login to YouTube first' });
 
         const spToken = req.session.spotifyTokens?.access_token || await getSpotifyAppToken();
-        const tracks = await fetchAllSpotifyTracks(playlistId, spToken);
         
-        send({ info: `Found ${tracks.length} tracks.`, total: tracks.length });
+        // --- RESTORED NAME FEATURE ---
+        let playlistName = "Converted Playlist";
+        if (playlistId === 'LIKED') {
+            playlistName = "My Spotify Liked Songs";
+        } else {
+            const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, { headers: { Authorization: `Bearer ${spToken}` } });
+            if (metaRes.ok) {
+                const metaData = await metaRes.json();
+                playlistName = metaData.name;
+            }
+        }
+
+        const tracks = await fetchAllSpotifyTracks(playlistId, spToken);
+        send({ info: `Found ${tracks.length} tracks from "${playlistName}".`, total: tracks.length });
 
         const oauth = makeOAuth2Client();
         oauth.setCredentials(req.session.googleTokens);
@@ -180,7 +192,7 @@ app.get('/stream-convert', async (req, res) => {
 
         let ytId = existingId;
         if (!ytId) {
-            const p = await youtube.playlists.insert({ part: 'snippet,status', requestBody: { snippet: { title: "Converted Playlist" }, status: { privacyStatus: 'private' } } });
+            const p = await youtube.playlists.insert({ part: 'snippet,status', requestBody: { snippet: { title: playlistName }, status: { privacyStatus: 'private' } } });
             ytId = p.data.id;
         }
 
@@ -230,6 +242,7 @@ app.get('/', (req, res) => {
         .bucket { flex: 1; background: #252525; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; opacity: 0; transform: translateY(20px); transition: 0.5s; }
         .bucket.show { opacity: 1; transform: translateY(0); }
         .bucket-list { flex: 1; overflow-y: auto; font-size: 13px; list-style: none; padding: 0; }
+        .bucket-list li { padding: 6px 0; border-bottom: 1px solid #333; }
         .close-btn { margin-top: 30px; background: white; color: black; width: auto; padding: 12px 40px; }
     </style>
 </head>
@@ -280,14 +293,10 @@ app.get('/', (req, res) => {
             container.innerHTML += \`<div class="user-row youtube"><div class="user-info"><img src="\${data.youtube.image || ''}"><div><span class="platform-label">YouTube Account</span>\${data.youtube.name}</div></div><a href="/auth/logout/youtube" class="logout nav-link">Disconnect</a></div>\`;
         } else { document.getElementById('btn_yt').style.display = 'block'; }
 
-        // STOP POLLING if both are connected
         if (spotifyLinked && youtubeLinked && pollInterval) {
-            console.log("Polling stopped: Both accounts linked.");
             clearInterval(pollInterval);
             pollInterval = null;
-        } 
-        // RESUME POLLING if one is missing and not already polling
-        else if ((!spotifyLinked || !youtubeLinked) && !pollInterval) {
+        } else if ((!spotifyLinked || !youtubeLinked) && !pollInterval) {
             startPolling();
         }
     }
@@ -297,7 +306,6 @@ app.get('/', (req, res) => {
         pollInterval = setInterval(updateProfiles, 2000);
     }
     
-    // Start initial check
     updateProfiles();
 
     document.getElementById('btn_sp').onclick = () => {
@@ -314,7 +322,7 @@ app.get('/', (req, res) => {
         if(!url) return alert("Enter a Spotify URL");
 
         isConverting = true;
-        if(pollInterval) clearInterval(pollInterval); // Stop polling during work
+        if(pollInterval) clearInterval(pollInterval);
 
         const log = document.getElementById('log');
         const convertBtn = document.getElementById('convert');
