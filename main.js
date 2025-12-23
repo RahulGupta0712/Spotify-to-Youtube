@@ -1,6 +1,6 @@
 /*
 ---------------------------------------------------------
-SPOTIFY -> YOUTUBE PLAYLIST CONVERTER (Brand Account & ID Fix)
+TUNECHANGE: SPOTIFY -> YOUTUBE CONVERTER
 ---------------------------------------------------------
 */
 const express = require('express');
@@ -15,16 +15,23 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(helmet({ contentSecurityPolicy: false }));
+// Allow inline scripts for our popup callbacks
+app.use(helmet({ 
+    contentSecurityPolicy: false,
+    crossOriginOpenerPolicy: { policy: "unsafe-none" } 
+}));
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.set('trust proxy', 1);
+
+const isProduction = process.env.NODE_ENV === 'production';
 
 app.use(cookieSession({
     name: 'session',
     keys: [process.env.SESSION_SECRET || 'secure_production_secret'],
     maxAge: 24 * 60 * 60 * 1000,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction, 
     httpOnly: true,
     sameSite: 'lax'
 }));
@@ -65,13 +72,17 @@ async function fetchAllSpotifyTracks(playlistId, token) {
         ? 'https://api.spotify.com/v1/me/tracks?limit=50'
         : `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`;
 
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) return null;
+    // Simple pagination handling
+    while (url) {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return tracks.length > 0 ? tracks : null; 
 
-    const data = await res.json();
-    data.items.forEach(item => {
-        if (item.track) tracks.push({ name: item.track.name, artist: item.track.artists[0].name });
-    });
+        const data = await res.json();
+        data.items.forEach(item => {
+            if (item.track) tracks.push({ name: item.track.name, artist: item.track.artists[0].name });
+        });
+        url = data.next; 
+    }
     return tracks;
 }
 
@@ -86,26 +97,117 @@ function makeOAuth2Client() {
     return new google.auth.OAuth2(process.env.YOUTUBE_CLIENT_ID, process.env.YOUTUBE_CLIENT_SECRET, process.env.YOUTUBE_REDIRECT_URI);
 }
 
+// --- LEGAL ROUTES (Required for Publishing) ---
+
+const commonStyles = `
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #ddd; max-width: 800px; margin: 0 auto; padding: 40px 20px; line-height: 1.6; }
+        h1 { color: white; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        h2 { color: white; margin-top: 30px; }
+        a { color: #1DB954; }
+        .back { display: inline-block; margin-bottom: 20px; color: #aaa; text-decoration: none; }
+        .back:hover { color: white; }
+    </style>
+`;
+
+app.get('/privacy', (req, res) => {
+    res.send(`<!doctype html>
+        <html>
+        <head><title>Privacy Policy - TuneChange</title>${commonStyles}</head>
+        <body>
+            <a href="/" class="back">← Back to App</a>
+            <h1>Privacy Policy</h1>
+            <p><strong>Last Updated:</strong> ${new Date().toLocaleDateString()}</p>
+            
+            <h2>1. Introduction</h2>
+            <p>This application ("TuneChange") helps users transfer playlists from Spotify to YouTube. Your privacy is important to us.</p>
+            
+            <h2>2. Data We Collect</h2>
+            <p>We only collect data necessary to perform the playlist conversion service:</p>
+            <ul>
+                <li><strong>Spotify:</strong> We access your public profile (to display your name) and your playlists (to read track details).</li>
+                <li><strong>YouTube:</strong> We access your YouTube channel (to verify identity) and manage your playlists (to create new ones and add videos).</li>
+            </ul>
+            
+            <h2>3. How We Use Your Data</h2>
+            <p>Data is used exclusively for:</p>
+            <ul>
+                <li>Retrieving song metadata from Spotify.</li>
+                <li>Searching for corresponding videos on YouTube.</li>
+                <li>Creating playlists on your YouTube channel.</li>
+            </ul>
+            <p><strong>We do not store your personal data, music history, or access tokens on any persistent server.</strong> All data is processed in temporary memory during your active session.</p>
+
+            <h2>4. Third-Party Services</h2>
+            <p>This app uses <strong>YouTube API Services</strong>. By using this application, users are agreeing to be bound by the <a href="https://www.youtube.com/t/terms" target="_blank">YouTube Terms of Service</a>.</p>
+            <p>Please refer to the <a href="http://www.google.com/policies/privacy" target="_blank">Google Privacy Policy</a> for information on how Google handles your data.</p>
+            
+            <h2>5. Data Revocation</h2>
+            <p>You can revoke this app's access to your data at any time via the <a href="https://security.google.com/settings/security/permissions" target="_blank">Google Security Settings</a> page.</p>
+
+            <h2>6. Contact</h2>
+            <p>If you have questions about this policy, please contact us at: viratrahul0718@gmail.com </p>
+        </body>
+        </html>
+    `);
+});
+
+app.get('/terms', (req, res) => {
+    res.send(`<!doctype html>
+        <html>
+        <head><title>Terms of Service - TuneChange</title>${commonStyles}</head>
+        <body>
+            <a href="/" class="back">← Back to App</a>
+            <h1>Terms of Service</h1>
+            <p><strong>Last Updated:</strong> ${new Date().toLocaleDateString()}</p>
+
+            <h2>1. Acceptance of Terms</h2>
+            <p>By accessing and using TuneChange, you accept and agree to be bound by the terms and provision of this agreement.</p>
+
+            <h2>2. YouTube API Services</h2>
+            <p>This client uses YouTube API Services. By using this client, you agree to be bound by the <a href="https://www.youtube.com/t/terms" target="_blank">YouTube Terms of Service</a>.</p>
+
+            <h2>3. Disclaimer</h2>
+            <p>TuneChange is provided "as is" without any warranties. We are not responsible for any data loss, incorrect song matching, or changes to your YouTube account/playlists.</p>
+
+            <h2>4. User Responsibilities</h2>
+            <p>You agree not to use this service for any illegal or unauthorized purpose.</p>
+            
+            <h2>5. Changes to Terms</h2>
+            <p>We reserve the right to modify these terms at any time.</p>
+        </body>
+        </html>
+    `);
+});
+
 // --- AUTH & PROFILE ROUTES ---
 
 app.get('/auth/profiles', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    
     let profiles = { spotify: null, youtube: null };
+    
     if (req.session.spotifyTokens) {
         try {
             const sRes = await fetch('https://api.spotify.com/v1/me', { headers: { Authorization: `Bearer ${req.session.spotifyTokens.access_token}` } });
-            const sData = await sRes.json();
-            profiles.spotify = { name: sData.display_name, image: sData.images?.[0]?.url };
+            if(sRes.ok) {
+                const sData = await sRes.json();
+                profiles.spotify = { name: sData.display_name, image: sData.images?.[0]?.url };
+            } else { req.session.spotifyTokens = null; }
         } catch (e) { req.session.spotifyTokens = null; }
     }
+
     if (req.session.googleTokens) {
         try {
             const oauth = makeOAuth2Client();
             oauth.setCredentials(req.session.googleTokens);
             const youtube = google.youtube({ version: 'v3', auth: oauth });
-            // Using mine:true specifically to target the selected Brand/Personal channel
             const yRes = await youtube.channels.list({ part: 'snippet', mine: true });
-            const chan = yRes.data.items[0].snippet;
-            profiles.youtube = { name: chan.title, image: chan.thumbnails.default.url };
+            
+            if (yRes.data.items && yRes.data.items.length > 0) {
+                const chan = yRes.data.items[0].snippet;
+                profiles.youtube = { name: chan.title, image: chan.thumbnails.default.url };
+            }
         } catch (e) { req.session.googleTokens = null; }
     }
     res.json(profiles);
@@ -120,33 +222,46 @@ app.get('/auth/logout/:platform', (req, res) => {
 app.get('/auth/spotify', (req, res) => {
     const state = generateRandomString(16);
     req.session.spotifyState = state;
+    const scope = 'playlist-read-private user-library-read';
     res.redirect('https://accounts.spotify.com/authorize?' + new URLSearchParams({
         response_type: 'code', client_id: process.env.SPOTIFY_CLIENT_ID,
-        scope: 'playlist-read-private user-library-read', redirect_uri: process.env.SPOTIFY_REDIRECT_URI, state: state
+        scope: scope, redirect_uri: process.env.SPOTIFY_REDIRECT_URI, state: state
     }).toString());
 });
 
 app.get('/spotify/callback', async (req, res) => {
     const { code } = req.query;
     const auth = Buffer.from(`${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`).toString('base64');
-    const resToken = await fetch('https://accounts.spotify.com/api/token', {
-        method: 'POST', headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `grant_type=authorization_code&code=${code}&redirect_uri=${process.env.SPOTIFY_REDIRECT_URI}`
-    });
-    req.session.spotifyTokens = await resToken.json();
-    res.send('<script>window.close();</script>');
+    try {
+        const resToken = await fetch('https://accounts.spotify.com/api/token', {
+            method: 'POST', headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `grant_type=authorization_code&code=${code}&redirect_uri=${process.env.SPOTIFY_REDIRECT_URI}`
+        });
+        const tokens = await resToken.json();
+        req.session.spotifyTokens = tokens;
+        
+        res.send(`<script>if(window.opener){window.opener.postMessage({type:'SPOTIFY_CONNECTED'},'*');}window.close();</script>`);
+    } catch(e) { res.send('Error logging in'); }
 });
 
 app.get('/auth/youtube', (req, res) => {
     const oauth = makeOAuth2Client();
-    res.redirect(oauth.generateAuthUrl({ access_type: 'offline', scope: ['https://www.googleapis.com/auth/youtube'], prompt: 'select_account consent' }));
+    const url = oauth.generateAuthUrl({ 
+        access_type: 'offline', 
+        scope: ['https://www.googleapis.com/auth/youtube'], 
+        prompt: 'select_account consent' 
+    });
+    res.redirect(url);
 });
 
 app.get('/oauth2callback', async (req, res) => {
     const oauth = makeOAuth2Client();
-    const { tokens } = await oauth.getToken(req.query.code);
-    req.session.googleTokens = tokens;
-    res.send('<script>window.close();</script>');
+    try {
+        const { tokens } = await oauth.getToken(req.query.code);
+        req.session.googleTokens = tokens;
+        
+        res.send(`<script>if(window.opener){window.opener.postMessage({type:'YOUTUBE_CONNECTED'},'*');}window.close();</script>`);
+    } catch(e) { res.send('Error logging in'); }
 });
 
 // --- REAL-TIME CONVERSION ROUTE ---
@@ -168,50 +283,26 @@ app.get('/stream-convert', async (req, res) => {
         oauth.setCredentials(req.session.googleTokens);
         const youtube = google.youtube({ version: 'v3', auth: oauth });
 
-        // --- IMPROVED YOUTUBE PLAYLIST VALIDATION ---
         let ytId = existingId?.trim();
         if (ytId) {
             try {
-                // We check 'mine: true' to see if it's one of YOUR playlists (Brand or Personal)
-                const check = await youtube.playlists.list({
-                    part: 'snippet',
-                    mine: true,
-                    maxResults: 50 
-                });
-                
+                const check = await youtube.playlists.list({ part: 'snippet', mine: true, maxResults: 50 });
                 const ownedPlaylist = check.data.items.find(p => p.id === ytId);
                 
                 if (!ownedPlaylist) {
-                    // If not in 'mine', try a direct ID lookup as a fallback
-                    const fallback = await youtube.playlists.list({
-                        part: 'snippet',
-                        id: ytId
-                    });
-                    
-                    if (fallback.data.items.length === 0) {
-                        return send({ error: "YouTube Playlist not found. Make sure you are logged into the CORRECT Brand Account channel in the popup." });
-                    }
-                    console.log("Found playlist via fallback, but might not have edit rights.");
-                } else {
-                    console.log("Confirmed: You own this playlist:", ownedPlaylist.snippet.title);
+                    const fallback = await youtube.playlists.list({ part: 'snippet', id: ytId });
+                    if (fallback.data.items.length === 0) return send({ error: "YouTube Playlist not found." });
                 }
-            } catch (e) {
-                return send({ error: "YouTube API Error: " + e.message });
-            }
+            } catch (e) { return send({ error: "YouTube API Error: " + e.message }); }
         }
 
-        // Fetch tracks...
         let tracks = await fetchAllSpotifyTracks(playlistId, spToken);
-        if (!tracks) return send({ error: 'Spotify access failed.' });
+        if (!tracks) return send({ error: 'Spotify access failed. Check URL or privacy.' });
 
-        // Create playlist if no ID provided
         if (!ytId) {
             const p = await youtube.playlists.insert({ 
                 part: 'snippet,status', 
-                requestBody: { 
-                    snippet: { title: "Converted Playlist" }, 
-                    status: { privacyStatus: 'private' } 
-                } 
+                requestBody: { snippet: { title: "TuneChange Playlist" }, status: { privacyStatus: 'private' } } 
             });
             ytId = p.data.id;
         }
@@ -225,18 +316,15 @@ app.get('/stream-convert', async (req, res) => {
                 try {
                     await youtube.playlistItems.insert({ 
                         part: 'snippet', 
-                        requestBody: { 
-                            snippet: { playlistId: ytId, resourceId: { kind: 'youtube#video', videoId: vid } } 
-                        } 
+                        requestBody: { snippet: { playlistId: ytId, resourceId: { kind: 'youtube#video', videoId: vid } } } 
                     });
                     send({ success: true, name: track.name, count: i + 1 });
                 } catch (e) {
-                    // This is where the Brand Account mismatch usually reveals itself
-                    if (e.errors && e.errors[0].reason === 'playlistNotFound') {
-                        return send({ error: "Error: You don't have permission to edit this playlist. You likely logged into your Personal account instead of your Brand Account." });
-                    }
+                    if (e.errors && e.errors[0].reason === 'playlistNotFound') return send({ error: "Permission Error: Logged into wrong Brand Account?" });
                     send({ success: false, name: track.name, reason: 'Insert Failed', count: i + 1 });
                 }
+            } else {
+                send({ success: false, name: track.name, reason: 'Not Found', count: i + 1 });
             }
             await new Promise(r => setTimeout(r, 600));
         }
@@ -249,10 +337,10 @@ app.get('/', (req, res) => {
     res.send(`<!doctype html>
 <html>
 <head>
-    <title>Convertify</title>
+    <title>TuneChange</title>
     <style>
         :root { --spotify: #1DB954; --yt: #ff0000; --bg: #121212; --card: #1e1e1e; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); color: white; display: flex; justify-content: center; padding: 20px; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
         .card { width: 100%; max-width: 550px; background: var(--card); padding: 30px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
         .user-row { display: flex; justify-content: space-between; align-items: center; background: #2a2a2a; padding: 12px; border-radius: 10px; margin-bottom: 12px; border-left: 4px solid #444; }
         .user-row.spotify { border-color: var(--spotify); }
@@ -262,17 +350,21 @@ app.get('/', (req, res) => {
         .platform-label { font-size: 10px; text-transform: uppercase; color: #888; display: block; }
         .logout { color: #ff4444; text-decoration: none; font-size: 11px; border: 1px solid #ff4444; padding: 5px 10px; border-radius: 5px; transition: 0.2s; }
         .logout:hover { background: #ff4444; color: white; }
-        .logout.disabled { opacity: 0.2; pointer-events: none; }
         input { width: 100%; padding: 14px; margin: 10px 0; background: #2c2c2c; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; }
         button { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
         .progress-container { width: 100%; background: #333; border-radius: 20px; height: 12px; margin: 25px 0; display: none; overflow: hidden; }
         .progress-fill { height: 100%; background: var(--spotify); width: 0%; transition: width 0.4s ease; }
         .log-box { background: #000; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 11px; height: 150px; overflow-y: auto; margin-top: 15px; border: 1px solid #333; }
         .green { color: var(--spotify); }
-        .results-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        
+        .footer-links { margin-top: 20px; font-size: 12px; color: #666; text-align: center; }
+        .footer-links a { color: #888; text-decoration: none; margin: 0 10px; }
+        .footer-links a:hover { color: white; text-decoration: underline; }
+
+        /* Overlay Styles */
+        .results-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
         .buckets-container { display: flex; gap: 20px; width: 90%; max-width: 800px; height: 60vh; margin-top: 20px; }
-        .bucket { flex: 1; background: #252525; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; opacity: 0; transform: translateY(20px); transition: 0.5s; }
-        .bucket.show { opacity: 1; transform: translateY(0); }
+        .bucket { flex: 1; background: #252525; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; }
         .bucket-list { flex: 1; overflow-y: auto; font-size: 13px; list-style: none; padding: 0; }
         .bucket-list li { padding: 6px 0; border-bottom: 1px solid #333; }
         .close-btn { margin-top: 30px; background: white; color: black; width: auto; padding: 12px 40px; }
@@ -280,7 +372,7 @@ app.get('/', (req, res) => {
 </head>
 <body>
     <div class="card">
-        <h2 style="text-align:center;">Spotify ➔ YouTube</h2>
+        <h2 style="text-align:center;">TuneChange</h2>
         <div id="profiles"></div>
         <button id="btn_sp" style="background:var(--spotify); color:white; margin-bottom:10px; display:none;">Login Spotify</button>
         <button id="btn_yt" style="background:var(--yt); color:white; display:none;">Login YouTube</button>
@@ -291,102 +383,84 @@ app.get('/', (req, res) => {
         <div class="log-box" id="log">Ready...</div>
     </div>
 
+    <div class="footer-links">
+        <a href="/privacy" target="_blank">Privacy Policy</a> | 
+        <a href="/terms" target="_blank">Terms of Service</a>
+    </div>
+
     <div class="results-overlay" id="overlay">
         <h1 class="green">Done!</h1>
         <div id="final-link"></div>
         <div class="buckets-container">
-            <div class="bucket" id="success-bucket"><h3>Added (<span id="success-count">0</span>)</h3><ul class="bucket-list" id="success-list"></ul></div>
-            <div class="bucket" id="failed-bucket"><h3>Failed (<span id="failed-count">0</span>)</h3><ul class="bucket-list" id="failed-list"></ul></div>
+            <div class="bucket"><h3>Added (<span id="success-count">0</span>)</h3><ul class="bucket-list" id="success-list"></ul></div>
+            <div class="bucket"><h3>Failed (<span id="failed-count">0</span>)</h3><ul class="bucket-list" id="failed-list"></ul></div>
         </div>
         <button class="close-btn" onclick="location.reload()">New Conversion</button>
     </div>
 
 <script>
     let isConverting = false;
-    let pollInterval = null;
+
+    window.addEventListener('message', (event) => {
+        if (event.data.type === 'SPOTIFY_CONNECTED' || event.data.type === 'YOUTUBE_CONNECTED') {
+            updateProfiles();
+        }
+    });
 
     async function updateProfiles() {
         if (isConverting) return;
-        const res = await fetch('/auth/profiles');
+        const res = await fetch('/auth/profiles?t=' + Date.now());
         const data = await res.json();
         const container = document.getElementById('profiles');
         container.innerHTML = '';
         
-        let spotifyLinked = !!data.spotify;
-        let youtubeLinked = !!data.youtube;
+        let sLinked = !!data.spotify;
+        let yLinked = !!data.youtube;
 
-        if(spotifyLinked) {
+        if(sLinked) {
             document.getElementById('btn_sp').style.display = 'none';
             container.innerHTML += \`<div class="user-row spotify"><div class="user-info"><img src="\${data.spotify.image || ''}"><div><span class="platform-label">Spotify Account</span>\${data.spotify.name}</div></div><a href="/auth/logout/spotify" class="logout nav-link">Disconnect</a></div>\`;
         } else { document.getElementById('btn_sp').style.display = 'block'; }
         
-        if(youtubeLinked) {
+        if(yLinked) {
             document.getElementById('btn_yt').style.display = 'none';
             container.innerHTML += \`<div class="user-row youtube"><div class="user-info"><img src="\${data.youtube.image || ''}"><div><span class="platform-label">YouTube Account</span>\${data.youtube.name}</div></div><a href="/auth/logout/youtube" class="logout nav-link">Disconnect</a></div>\`;
         } else { document.getElementById('btn_yt').style.display = 'block'; }
-
-        if (spotifyLinked && youtubeLinked && pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-        } else if ((!spotifyLinked || !youtubeLinked) && !pollInterval) {
-            startPolling();
-        }
-    }
-
-    function startPolling() {
-        if (pollInterval) clearInterval(pollInterval);
-        pollInterval = setInterval(updateProfiles, 2000);
     }
     
     updateProfiles();
 
-    document.getElementById('btn_sp').onclick = () => {
-        window.open('/auth/spotify', '_blank', 'width=500,height=600');
-        startPolling();
-    };
-    document.getElementById('btn_yt').onclick = () => {
-        window.open('/auth/youtube', '_blank', 'width=500,height=600');
-        startPolling();
-    };
+    function openAuth(url, title) {
+        const w = 500, h = 600;
+        const left = (screen.width/2)-(w/2);
+        const top = (screen.height/2)-(h/2);
+        window.open(url, title, \`width=\${w},height=\${h},top=\${top},left=\${left}\`);
+    }
+
+    document.getElementById('btn_sp').onclick = () => openAuth('/auth/spotify', 'SpotifyLogin');
+    document.getElementById('btn_yt').onclick = () => openAuth('/auth/youtube', 'YoutubeLogin');
 
     document.getElementById('convert').onclick = () => {
         const url = document.getElementById('playlistUrl').value;
         if(!url) return alert("Enter a Spotify URL");
-
         isConverting = true;
-        if(pollInterval) clearInterval(pollInterval);
-
-        const log = document.getElementById('log');
-        const convertBtn = document.getElementById('convert');
-        const navLinks = document.querySelectorAll('.nav-link');
-
-        convertBtn.disabled = true;
-        navLinks.forEach(link => link.classList.add('disabled'));
+        document.getElementById('convert').disabled = true;
         document.getElementById('p_container').style.display = 'block';
         
         const source = new EventSource(\`/stream-convert?playlistUrl=\${encodeURIComponent(url)}&existingId=\${document.getElementById('existingId').value}\`);
-        let successTracks = [], failedTracks = [], total = 0;
+        let s = [], f = [], total = 0;
 
         source.onmessage = (e) => {
             const d = JSON.parse(e.data);
-            if(d.info) { total = d.total; log.innerHTML += \`ℹ \${d.info}<br>\`; }
-            if(d.success || d.success === false) {
-                if(d.success) successTracks.push(d.name); else failedTracks.push(d.name);
+            if(d.info) { total = d.total; document.getElementById('log').innerHTML += \`ℹ \${d.info}<br>\`; }
+            if(d.success !== undefined) {
+                d.success ? s.push(d.name) : f.push(d.name);
                 document.getElementById('p_fill').style.width = ((d.count / total) * 100) + '%';
-                log.innerHTML += \`<div>\${d.success ? '✔' : '✘'} \${d.name}</div>\`;
+                document.getElementById('log').innerHTML += \`<div>\${d.success ? '✔' : '✘'} \${d.name}</div>\`;
+                document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
             }
-            if(d.done) {
-                source.close();
-                showOverlay(d.url, successTracks, failedTracks);
-            }
-            if(d.error) { 
-                alert(d.error); 
-                isConverting = false;
-                convertBtn.disabled = false;
-                navLinks.forEach(link => link.classList.remove('disabled'));
-                source.close(); 
-            }
-            log.scrollTop = log.scrollHeight;
+            if(d.done) { source.close(); showOverlay(d.url, s, f); }
+            if(d.error) { alert(d.error); location.reload(); }
         };
     };
 
@@ -397,11 +471,10 @@ app.get('/', (req, res) => {
         document.getElementById('failed-count').innerText = f.length;
         s.forEach(t => document.getElementById('success-list').innerHTML += \`<li>\${t}</li>\`);
         f.forEach(t => document.getElementById('failed-list').innerHTML += \`<li>\${t}</li>\`);
-        setTimeout(() => document.querySelectorAll('.bucket').forEach(b => b.classList.add('show')), 100);
     }
 </script>
 </body>
 </html>`);
 });
 
-app.listen(PORT);
+app.listen(PORT, () => console.log(`TuneChange running on port ${PORT}`));
