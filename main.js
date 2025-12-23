@@ -113,7 +113,9 @@ const commonStyles = `
 app.get('/privacy', (req, res) => {
     res.send(`<!doctype html>
         <html>
-        <head><title>Privacy Policy - TuneChange</title>${commonStyles}</head>
+        <head><title>Privacy Policy - TuneChange</title>
+        <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
+        ${commonStyles}</head>
         <body>
             <a href="/" class="back">← Back to App</a>
             <h1>Privacy Policy</h1>
@@ -155,7 +157,9 @@ app.get('/privacy', (req, res) => {
 app.get('/terms', (req, res) => {
     res.send(`<!doctype html>
         <html>
-        <head><title>Terms of Service - TuneChange</title>${commonStyles}</head>
+        <head><title>Terms of Service - TuneChange</title>
+        <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
+        ${commonStyles}</head>
         <body>
             <a href="/" class="back">← Back to App</a>
             <h1>Terms of Service</h1>
@@ -338,6 +342,7 @@ app.get('/', (req, res) => {
 <html>
 <head>
     <title>TuneChange</title>
+    <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
     <style>
         :root { --spotify: #1DB954; --yt: #ff0000; --bg: #121212; --card: #1e1e1e; }
         body { font-family: 'Inter', sans-serif; background: var(--bg); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
