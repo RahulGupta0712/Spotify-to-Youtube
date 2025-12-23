@@ -422,7 +422,7 @@ app.get('/', (req, res) => {
         <button id="btn_yt" style="background:var(--yt); color:white; display:none;">Login YouTube</button>
         
         <label style="font-size: 12px; color: var(--spotify);">Spotify Source:</label>
-        <input id="playlistUrl" placeholder="URL e.g. https://open.spotify.com/playlist/...">
+        <input id="playlistUrl" placeholder="Playlist URL e.g. https://open.spotify.com/playlist/... or LIKED for liked songs">
         
         <label style="font-size: 12px; color: var(--yt);">YouTube Destination:</label>
         <input id="existingId" placeholder="Playlist ID e.g. PLbc6K08_6T7S1m... (Optional)">
