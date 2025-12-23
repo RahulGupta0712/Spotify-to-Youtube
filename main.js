@@ -302,29 +302,37 @@ app.get('/stream-convert', async (req, res) => {
         const youtube = google.youtube({ version: 'v3', auth: oauth });
 
         let ytId = existingId?.trim();
+        
+        // FIX: Remove 'mine: true' check. 
+        // Just verify ID existence to support Brand Accounts/Shared Playlists properly.
         if (ytId) {
             try {
-                const check = await youtube.playlists.list({ part: 'snippet', mine: true, maxResults: 50 });
-                const ownedPlaylist = check.data.items.find(p => p.id === ytId);
+                const check = await youtube.playlists.list({ 
+                    part: 'snippet', 
+                    id: ytId 
+                });
                 
-                if (!ownedPlaylist) {
-                    const fallback = await youtube.playlists.list({ part: 'snippet', id: ytId });
-                    if (fallback.data.items.length === 0) return send({ error: "YouTube Playlist not found." });
+                if (!check.data.items || check.data.items.length === 0) {
+                    return send({ error: "YouTube Playlist ID not found." });
                 }
-            } catch (e) { return send({ error: "YouTube API Error: " + e.message }); }
+                // If it exists, we proceed. We assume we have write permissions.
+                // If we don't, the item insert loop below will catch the error.
+            } catch (e) { 
+                return send({ error: "YouTube API Error: " + e.message }); 
+            }
         }
 
         let tracks = await fetchAllSpotifyTracks(playlistId, spToken);
         if (!tracks) return send({ error: 'Spotify access failed. Check URL or privacy.' });
         
+        // Create new playlist if no ID provided
         if (!ytId) {
             let title = "TuneChange Playlist";
-            // NEW: Attempt to fetch Spotify playlist name
+            // Attempt to fetch Spotify playlist name
             if (playlistId === 'LIKED') title = "Liked Songs";
             else {
                 try {
-                    // Use the same URL pattern as fetchAllTracks but remove '/tracks' to get metadata
-                    const m = await fetch(`https://api.spotify.com/v1/playlists/$${playlistId}`, { headers: { Authorization: `Bearer ${spToken}` } });
+                    const m = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, { headers: { Authorization: `Bearer ${spToken}` } });
                     const d = await m.json();
                     if (d.name) title = d.name;
                 } catch (e) { console.log("Name fetch failed, using default"); }
