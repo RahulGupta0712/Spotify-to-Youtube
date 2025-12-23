@@ -211,8 +211,22 @@ app.get('/auth/profiles', async (req, res) => {
             if (yRes.data.items && yRes.data.items.length > 0) {
                 const chan = yRes.data.items[0].snippet;
                 profiles.youtube = { name: chan.title, image: chan.thumbnails.default.url };
+            } else {
+                // User is logged in, but HAS NO CHANNEL. 
+                // We keep them logged in but show a generic name.
+                profiles.youtube = { name: "Google Account (No Channel)", image: "https://www.gstatic.com/youtube/img/branding/favicon/favicon_144x144.png" };
+                console.log("User logged in, but no YouTube Channel found.");
             }
-        } catch (e) { req.session.googleTokens = null; }
+        } catch (e) { 
+            // CRITICAL: Log the specific error to your terminal
+            console.error("YouTube API Error during profile fetch:", e); 
+            console.error("Error details:", e.response ? e.response.data : e.message);
+            
+            // Only kill session if it's an Auth error
+            if (e.code === 401 || e.code === 403) {
+                req.session.googleTokens = null;
+            }
+        }
     }
     res.json(profiles);
 });
