@@ -389,7 +389,13 @@ app.get('/', (req, res) => {
         .platform-label { font-size: 10px; text-transform: uppercase; color: #888; display: block; }
         .logout { color: #ff4444; text-decoration: none; font-size: 11px; border: 1px solid #ff4444; padding: 5px 10px; border-radius: 5px; transition: 0.2s; }
         .logout:hover { background: #ff4444; color: white; }
+        
         input { width: 100%; padding: 14px; margin: 10px 0; background: #2c2c2c; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; }
+        
+        /* THEMED INPUTS */
+        #playlistUrl { border: 1px solid var(--spotify); border-left: 5px solid var(--spotify); }
+        #existingId { border: 1px solid var(--yt); border-left: 5px solid var(--yt); }
+
         button { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
         .progress-container { width: 100%; background: #333; border-radius: 20px; height: 12px; margin: 25px 0; display: none; overflow: hidden; }
         .progress-fill { height: 100%; background: var(--spotify); width: 0%; transition: width 0.4s ease; }
@@ -400,7 +406,6 @@ app.get('/', (req, res) => {
         .footer-links a { color: #888; text-decoration: none; margin: 0 10px; }
         .footer-links a:hover { color: white; text-decoration: underline; }
 
-        /* Overlay Styles */
         .results-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
         .buckets-container { display: flex; gap: 20px; width: 90%; max-width: 800px; height: 60vh; margin-top: 20px; }
         .bucket { flex: 1; background: #252525; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; }
@@ -415,13 +420,17 @@ app.get('/', (req, res) => {
         <div id="profiles"></div>
         <button id="btn_sp" style="background:var(--spotify); color:white; margin-bottom:10px; display:none;">Login Spotify</button>
         <button id="btn_yt" style="background:var(--yt); color:white; display:none;">Login YouTube</button>
-        <input id="playlistUrl" placeholder="Spotify Playlist URL or 'LIKED'">
-        <input id="existingId" placeholder="YouTube Playlist ID (Optional)">
+        
+        <label style="font-size: 12px; color: var(--spotify);">Spotify Source:</label>
+        <input id="playlistUrl" placeholder="URL e.g. https://open.spotify.com/playlist/...">
+        
+        <label style="font-size: 12px; color: var(--yt);">YouTube Destination:</label>
+        <input id="existingId" placeholder="Playlist ID e.g. PLbc6K08_6T7S1m... (Optional)">
+        
         <div class="progress-container" id="p_container"><div class="progress-fill" id="p_fill"></div></div>
         <button id="convert" style="background:white; color:black; margin-top:20px;">Start Conversion</button>
         <div class="log-box" id="log">Ready...</div>
     </div>
-
     <div class="footer-links">
         <a href="/privacy" target="_blank">Privacy Policy</a> | 
         <a href="/terms" target="_blank">Terms of Service</a>
@@ -515,5 +524,4 @@ app.get('/', (req, res) => {
 </body>
 </html>`);
 });
-
 app.listen(PORT, () => console.log(`TuneChange running on port ${PORT}`));
