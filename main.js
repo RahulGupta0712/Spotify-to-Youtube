@@ -316,11 +316,23 @@ app.get('/stream-convert', async (req, res) => {
 
         let tracks = await fetchAllSpotifyTracks(playlistId, spToken);
         if (!tracks) return send({ error: 'Spotify access failed. Check URL or privacy.' });
-
+        
         if (!ytId) {
+            let title = "TuneChange Playlist";
+            // NEW: Attempt to fetch Spotify playlist name
+            if (playlistId === 'LIKED') title = "Liked Songs";
+            else {
+                try {
+                    // Use the same URL pattern as fetchAllTracks but remove '/tracks' to get metadata
+                    const m = await fetch(`https://api.spotify.com/v1/playlists/$${playlistId}`, { headers: { Authorization: `Bearer ${spToken}` } });
+                    const d = await m.json();
+                    if (d.name) title = d.name;
+                } catch (e) { console.log("Name fetch failed, using default"); }
+            }
+
             const p = await youtube.playlists.insert({ 
                 part: 'snippet,status', 
-                requestBody: { snippet: { title: "TuneChange Playlist" }, status: { privacyStatus: 'private' } } 
+                requestBody: { snippet: { title: title }, status: { privacyStatus: 'private' } } 
             });
             ytId = p.data.id;
         }
