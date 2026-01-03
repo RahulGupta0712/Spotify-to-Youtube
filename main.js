@@ -111,46 +111,91 @@ const commonStyles = `
 `;
 
 app.get('/privacy', (req, res) => {
-    res.send(`<!doctype html>
-        <html>
-        <head><title>Privacy Policy - TuneChange</title>
-        <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
-        ${commonStyles}</head>
-        <body>
-            <a href="/" class="back">← Back to App</a>
-            <h1>Privacy Policy</h1>
-            <p><strong>Last Updated:</strong> ${new Date().toLocaleDateString()}</p>
-            
-            <h2>1. Introduction</h2>
-            <p>This application ("TuneChange") helps users transfer playlists from Spotify to YouTube. Your privacy is important to us.</p>
-            
-            <h2>2. Data We Collect</h2>
-            <p>We only collect data necessary to perform the playlist conversion service:</p>
-            <ul>
-                <li><strong>Spotify:</strong> We access your public profile (to display your name) and your playlists (to read track details).</li>
-                <li><strong>YouTube:</strong> We access your YouTube channel (to verify identity) and manage your playlists (to create new ones and add videos).</li>
-            </ul>
-            
-            <h2>3. How We Use Your Data</h2>
-            <p>Data is used exclusively for:</p>
-            <ul>
-                <li>Retrieving song metadata from Spotify.</li>
-                <li>Searching for corresponding videos on YouTube.</li>
-                <li>Creating playlists on your YouTube channel.</li>
-            </ul>
-            <p><strong>We do not store your personal data, music history, or access tokens on any persistent server.</strong> All data is processed in temporary memory during your active session.</p>
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - TuneChange</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background-color: #f9f9f9;
+        }
+        .container {
+            background-color: #fff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { color: #000; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        h2 { color: #444; margin-top: 30px; }
+        p, li { margin-bottom: 15px; }
+        ul { padding-left: 20px; }
+        .last-updated { font-style: italic; color: #777; margin-bottom: 30px; }
+        a { color: #0066cc; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .highlight-box {
+            background-color: #fffde7;
+            border-left: 4px solid #fbc02d;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
 
-            <h2>4. Third-Party Services</h2>
-            <p>This app uses <strong>YouTube API Services</strong>. By using this application, users are agreeing to be bound by the <a href="https://www.youtube.com/t/terms" target="_blank">YouTube Terms of Service</a>.</p>
-            <p>Please refer to the <a href="http://www.google.com/policies/privacy" target="_blank">Google Privacy Policy</a> for information on how Google handles your data.</p>
-            
-            <h2>5. Data Revocation</h2>
-            <p>You can revoke this app's access to your data at any time via the <a href="https://security.google.com/settings/security/permissions" target="_blank">Google Security Settings</a> page.</p>
+<div class="container">
+    <h1>Privacy Policy</h1>
+    <p class="last-updated">Last Updated: January 3, 2026</p>
 
-            <h2>6. Contact</h2>
-            <p>If you have questions about this policy, please contact us at: viratrahul0718@gmail.com </p>
-        </body>
-        </html>
+    <h2>1. Introduction</h2>
+    <p>TuneChange ("we," "us," or "our") provides a service to help users transfer their music playlists from Spotify to YouTube. Your privacy is paramount, and this policy explains how we handle your data in compliance with the YouTube API Services Developer Policies.</p>
+
+    <h2>2. Data We Access, Collect, and Store</h2>
+    <p>To perform our playlist conversion service, we access the following information:</p>
+    <ul>
+        <li><strong>Spotify Data:</strong> We access your public profile and your playlists to read track metadata (song titles and artist names).</li>
+        <li><strong>YouTube API Data:</strong> In accordance with the YouTube API Services Developer Policies, our application accesses, collects, and uses API Data relating to your YouTube channel. This includes verifying your channel identity and managing your playlists (creating new playlists and adding videos).</li>
+        <li><strong>Device Information & Cookies:</strong> We store and access information directly or indirectly on your device, including the use of <strong>cookies or similar technologies</strong> (such as local storage). These are used strictly to maintain your active session, recognize your browser, and ensure the application functions as intended.</li>
+    </ul>
+
+    <h2>3. How We Use, Process, and Share Your Data</h2>
+    <p>Your data is processed exclusively to facilitate the music migration process, including:</p>
+    <ul>
+        <li>Retrieving metadata from your Spotify account.</li>
+        <li>Searching for matching official music videos via the YouTube API.</li>
+        <li>Creating and populating private playlists on your YouTube account.</li>
+    </ul>
+    <div class="highlight-box">
+        <strong>Sharing Disclosure:</strong> We do <u>not</u> share your personal information, Spotify data, or YouTube API Data with any external third parties or internal parties not involved in the immediate migration process.
+    </div>
+
+    <h2>4. Data Retention and Storage</h2>
+    <p>We believe in data minimization. We do not store your personal music history, access tokens, or YouTube API Data on any persistent server. All API data is processed in temporary memory during your active session and is cleared once the migration is complete or the browser session is closed.</p>
+
+    <h2>5. Third-Party Terms</h2>
+    <p>By using TuneChange, you are also bound by the terms of our third-party providers:</p>
+    <ul>
+        <li>This app uses <strong>YouTube API Services</strong>. By using this application, users agree to be bound by the <a href="https://www.youtube.com/t/terms" target="_blank">YouTube Terms of Service (ToS)</a>.</li>
+        <li>For more information on how Google handles your data, please visit the <a href="http://www.google.com/policies/privacy" target="_blank">Google Privacy Policy</a>.</li>
+    </ul>
+
+    <h2>6. Revoking Access</h2>
+    <p>You can revoke TuneChange's access to your data at any time via the <a href="https://security.google.com/settings/security/permissions" target="_blank">Google Security Settings</a> page or your Spotify account settings.</p>
+
+    <h2>7. Contact Us</h2>
+    <p>If you have any questions regarding this Privacy Policy, please contact us at:<br>
+    <strong>Email:</strong> viratrahul0718@gmail.com</p>
+</div>
+
+</body>
+</html>
     `);
 });
 
@@ -163,7 +208,7 @@ app.get('/terms', (req, res) => {
         <body>
             <a href="/" class="back">← Back to App</a>
             <h1>Terms of Service</h1>
-            <p><strong>Last Updated:</strong> ${new Date().toLocaleDateString()}</p>
+            <p><strong>Last Updated:</strong> January 3, 2026</p>
 
             <h2>1. Acceptance of Terms</h2>
             <p>By accessing and using TuneChange, you accept and agree to be bound by the terms and provision of this agreement.</p>
