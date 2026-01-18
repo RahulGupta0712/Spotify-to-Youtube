@@ -385,7 +385,7 @@ app.get('/stream-convert', async (req, res) => {
         }
 
         send({ info: `Found ${tracks.length} tracks. Starting transfer...`, total: tracks.length });
-
+        stats.total = tracks.length;
         for (let i = 0; i < tracks.length; i++) {
             const track = tracks[i];
             const vid = await searchYouTube(`${track.name} ${track.artist} official audio`);
