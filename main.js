@@ -11,13 +11,45 @@ const yts = require('yt-search');
 const helmet = require('helmet');
 const path = require('path');
 require('dotenv').config();
-
+const winston = require('winston');
+const { WinstonTransport } = require('@axiomhq/winston'); 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.json(),
+    defaultMeta: { service: 'tunechange-app' },
+    transports: [
+        new winston.transports.Console({ format: winston.format.simple() }),
+        new WinstonTransport({
+            dataset: process.env.AXIOM_DATASET,
+            token: process.env.AXIOM_TOKEN,
+            orgId: process.env.AXIOM_ORG_ID,
+        }),
+    ],
+});
+
+const auditLog = (event, details) => {
+    logger.info(event, { 
+        ...details, 
+        timestamp: new Date().toISOString(),
+        useCase: 'Spotify-to-YouTube-Migration' 
+    });
+};
+
 // Allow inline scripts for our popup callbacks
 app.use(helmet({ 
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+        directives: {
+            "default-src": ["'self'"],
+            // Allow your inline scripts for the popup callback logic
+            "script-src": ["'self'", "'unsafe-inline'"], 
+            "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            // Allow images from Spotify and Google/YouTube for user profiles
+            "img-src": ["'self'", "https://*.scdn.co", "https://*.googleusercontent.com", "https://*.ytimg.com", "data:"]
+        }
+    },
     crossOriginOpenerPolicy: { policy: "unsafe-none" } 
 }));
 
@@ -30,7 +62,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 app.use(cookieSession({
     name: 'session',
     keys: [process.env.SESSION_SECRET || 'secure_production_secret'],
-    maxAge: 24 * 60 * 60 * 1000,
+    maxAge: 60 * 60 * 1000,
     secure: isProduction, 
     httpOnly: true,
     sameSite: 'lax'
@@ -141,8 +173,11 @@ app.get('/privacy', (req, res) => {
 
             <h2>6. Revoking Access</h2>
             <p>You can revoke access at any time via the <a href="https://security.google.com/settings/security/permissions" target="_blank">Google Security Settings</a> page.</p>
-
-            <h2>7. Contact</h2>
+            
+            <h2>7. Operational Logging:</h2> 
+            <p>We use Axiom.co to monitor application performance and quota usage. No personally identifiable music history is stored in these logs.</p>
+            
+            <h2>8. Contact</h2>
             <p>Questions? Contact us at: viratrahul0718@gmail.com</p>
         </body>
         </html>
@@ -280,6 +315,12 @@ app.get('/oauth2callback', async (req, res) => {
 // --- REAL-TIME CONVERSION ROUTE ---
 
 app.get('/stream-convert', async (req, res) => {
+    req.on('close', () => {
+        // This stops the server from continuing the loop if the user closes the tab
+        console.log("Client closed connection. Stopping migration.");
+        res.end();
+    });
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -288,6 +329,8 @@ app.get('/stream-convert', async (req, res) => {
     const { playlistUrl, existingId } = req.query;
 
     try {
+        let stats = { success: 0, fail: 0, total: 0, quotaEstimated: 0 };
+
         const playlistId = parseSpotifyPlaylistId(playlistUrl);
         if (!req.session.googleTokens) return send({ error: 'Login to YouTube first' });
 
@@ -322,6 +365,7 @@ app.get('/stream-convert', async (req, res) => {
         
         // Create new playlist if no ID provided
         if (!ytId) {
+            stats.quotaEstimated += 50; // Cost of creating the playlist itself
             let title = "TuneChange Playlist";
             // Attempt to fetch Spotify playlist name
             if (playlistId === 'LIKED') title = "Liked Songs";
@@ -351,8 +395,12 @@ app.get('/stream-convert', async (req, res) => {
                         part: 'snippet', 
                         requestBody: { snippet: { playlistId: ytId, resourceId: { kind: 'youtube#video', videoId: vid } } } 
                     });
+                    // Inside the loop after a successful YouTube insert:
+                    stats.success++;
+                    stats.quotaEstimated += 150; // 100 for search + 50 for insert
                     send({ success: true, name: track.name, count: i + 1 });
                 } catch (e) {
+                    stats.quotaEstimated += 100;
                     if (e.errors && e.errors[0].reason === 'playlistNotFound') return send({ error: "Permission Error: Logged into wrong Brand Account?" });
                     send({ success: false, name: track.name, reason: 'Insert Failed', count: i + 1 });
                 }
@@ -361,6 +409,12 @@ app.get('/stream-convert', async (req, res) => {
             }
             await new Promise(r => setTimeout(r, 600));
         }
+        auditLog('MIGRATION_COMPLETED', {
+            successCount: stats.success,
+            totalTracks: stats.total,
+            estimatedQuota: stats.quotaEstimated
+        });
+        req.session.spotifyTokens = null;
         send({ done: true, url: `https://www.youtube.com/playlist?list=${ytId}` });
     } catch (err) { send({ error: err.message }); }
     finally { res.end(); }
