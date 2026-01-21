@@ -340,6 +340,10 @@ app.get('/stream-convert', async (req, res) => {
         const youtube = google.youtube({ version: 'v3', auth: oauth });
 
         let ytId = existingId?.trim();
+        if (ytId && ytId.includes('list=')) {
+            const urlParams = new URLSearchParams(ytId.split('?')[1]);
+            ytId = urlParams.get('list');
+        }
         
         // FIX: Remove 'mine: true' check. 
         // Just verify ID existence to support Brand Accounts/Shared Playlists properly.
@@ -424,75 +428,328 @@ app.get('/', (req, res) => {
     res.send(`<!doctype html>
 <html>
 <head>
-    <title>TuneChange</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>TuneChange - Best Spotify to YouTube Playlist Converter & Migrator</title>
+    
+    <meta name="description" content="Convert Spotify playlists to YouTube for free. TuneChange is a fast, secure music migrator using Spotify and YouTube APIs to transfer your favorite tracks effortlessly.">
+    <meta name="keywords" content="Spotify to YouTube converter, transfer Spotify playlist to YouTube, music migrator, Spotify API, YouTube API, TuneChange playlist transfer">
+    <meta name="author" content="TuneChange">
+    <link rel="canonical" href="https://tunechange.xyz/" />
+
     <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
     <style>
-        :root { --spotify: #1DB954; --yt: #ff0000; --bg: #121212; --card: #1e1e1e; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-        .card { width: 100%; max-width: 550px; background: var(--card); padding: 30px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
-        .user-row { display: flex; justify-content: space-between; align-items: center; background: #2a2a2a; padding: 12px; border-radius: 10px; margin-bottom: 12px; border-left: 4px solid #444; }
-        .user-row.spotify { border-color: var(--spotify); }
-        .user-row.youtube { border-color: var(--yt); }
+        :root { 
+            --spotify: #1ed760;
+            --yt: #ff0000; 
+            --bg: #f2f2f7; 
+            --glass-surface: rgba(255, 255, 255, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --glass-highlight: rgba(255, 255, 255, 0.8);
+            --text-main: #1d1d1f;
+            --text-muted: rgba(0, 0, 0, 0.5);
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: var(--bg); 
+            color: var(--text-main); 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+            margin: 0; 
+            padding: 20px; 
+            box-sizing: border-box;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Ambient Background Orbs for Glass Effect */
+        body::before, body::after {
+            content: '';
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            border-radius: 50%;
+            z-index: -1;
+            filter: blur(80px);
+            opacity: 0.5;
+        }
+        body::before {
+            background: var(--spotify);
+            top: -100px;
+            left: -100px;
+        }
+        body::after {
+            background: var(--yt);
+            bottom: -100px;
+            right: -100px;
+        }
+
+        .card { 
+            width: 100%; 
+            max-width: 500px; 
+            /* Glassmorphism Core */
+            background: var(--glass-surface);
+            backdrop-filter: blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(30px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.15);
+            border-top: 1px solid rgba(255,255,255,0.2);
+            
+            padding: 40px 30px; 
+            border-radius: 32px; 
+            position: relative;
+            z-index: 1;
+        }
+
+        .user-row { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            background: rgba(255, 255, 255, 0.4);
+            padding: 12px 16px; 
+            border-radius: 16px; 
+            margin-bottom: 12px; 
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(10px);
+        }
+
+        .app-description { 
+            text-align: center; 
+            margin-bottom: 30px; 
+            border-bottom: 1px solid var(--glass-border); 
+            padding-bottom: 20px; 
+        }
+        .app-description h1 { margin: 0 0 5px 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px; }
+        .app-description h2 { font-size: 15px; color: var(--text-muted); font-weight: 500; margin-bottom: 20px; letter-spacing: 0.5px;}
+        .app-description p { color: var(--text-muted); font-size: 14px; line-height: 1.5; margin: 0; font-weight: 400; }
+        .highlight-text { color: #000; font-weight: 700; text-shadow: none; }
+
+        .user-row.spotify { border-left: 4px solid var(--spotify); }
+        .user-row.youtube { border-left: 4px solid var(--yt); }
         .user-info { display: flex; align-items: center; gap: 12px; }
-        .user-info img { width: 32px; height: 32px; border-radius: 50%; }
-        .platform-label { font-size: 10px; text-transform: uppercase; color: #888; display: block; }
-        .logout { color: #ff4444; text-decoration: none; font-size: 11px; border: 1px solid #ff4444; padding: 5px 10px; border-radius: 5px; transition: 0.2s; }
+        .user-info img { width: 36px; height: 36px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); }
+        .platform-label { font-size: 10px; text-transform: uppercase; color: var(--text-muted); display: block; margin-top: 2px; letter-spacing: 1px;}
+        
+        .logout { 
+            color: rgba(255, 255, 255, 0.8); 
+            text-decoration: none; 
+            font-size: 11px; 
+            background: rgba(255, 68, 68, 0.2); 
+            padding: 6px 12px; 
+            border-radius: 20px; 
+            transition: 0.2s; 
+            font-weight: 600;
+        }
         .logout:hover { background: #ff4444; color: white; }
         
-        input { width: 100%; padding: 14px; margin: 10px 0; background: #2c2c2c; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; }
-        
-        /* THEMED INPUTS */
-        #playlistUrl { border: 1px solid var(--spotify); border-left: 5px solid var(--spotify); }
-        #existingId { border: 1px solid var(--yt); border-left: 5px solid var(--yt); }
+        /* Inputs - Glass style */
+        input { 
+            width: 100%; 
+            padding: 16px; 
+            margin: 10px 0 20px 0; 
+            background: rgba(255, 255, 255, 0.5); 
+            border: 1px solid var(--glass-border);
+            color: #000; 
+            border-radius: 16px; 
+            box-sizing: border-box; 
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
 
-        button { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        .progress-container { width: 100%; background: #333; border-radius: 20px; height: 12px; margin: 25px 0; display: none; overflow: hidden; }
-        .progress-fill { height: 100%; background: var(--spotify); width: 0%; transition: width 0.4s ease; }
-        .log-box { background: #000; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 11px; height: 150px; overflow-y: auto; margin-top: 15px; border: 1px solid #333; }
-        .green { color: var(--spotify); }
+        label {
+            margin-left: 5px; 
+            font-weight: 600; 
+            font-size: 11px !important; 
+            letter-spacing: 0.5px; 
+            text-transform: uppercase;
+        }
         
-        .footer-links { margin-top: 20px; font-size: 12px; color: #666; text-align: center; }
-        .footer-links a { color: #888; text-decoration: none; margin: 0 10px; }
-        .footer-links a:hover { color: white; text-decoration: underline; }
+        input::placeholder { color: rgba(0, 0, 0, 0.4); }
 
-        .results-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        /* Focus States with Soft Glows */
+        input:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.9);
+            border-color: rgba(0, 0, 0, 0.2);
+            transform: scale(1.01);
+        }
+
+        #playlistUrl:focus {
+            border-color: var(--spotify) !important;
+            box-shadow: 0 0 25px rgba(30, 215, 96, 0.2);
+        }
+
+        #existingId:focus {
+            border-color: var(--yt) !important;
+            box-shadow: 0 0 25px rgba(255, 0, 0, 0.2);
+        }
+        
+        #playlistUrl { border-left: 4px solid var(--spotify); }
+        #existingId { border-left: 4px solid var(--yt); }
+
+        /* Buttons - iOS Style */
+        button { 
+            width: 100%; 
+            padding: 16px; 
+            border-radius: 16px; 
+            border: none; 
+            font-weight: 700; 
+            font-size: 14px;
+            cursor: pointer; 
+            transition: transform 0.2s, box-shadow 0.2s; 
+            letter-spacing: 0.5px;
+        }
+        button:active { transform: scale(0.98); }
+
+        /* Progress Bar */
+        .progress-container { 
+            width: 100%; 
+            background: rgba(255,255,255,0.1); 
+            border-radius: 20px; 
+            height: 8px; 
+            margin: 25px 0; 
+            display: none; 
+            overflow: hidden; 
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .progress-fill { height: 100%; background: var(--spotify); width: 0%; box-shadow: 0 0 10px var(--spotify); transition: width 0.4s ease; }
+
+        /* Log Box - Dark Glass */
+        .log-box { 
+            background: rgba(255, 255, 255, 0.5);
+            padding: 15px; 
+            border-radius: 16px; 
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace; 
+            font-size: 11px; 
+            height: 150px; 
+            overflow-y: auto; 
+            margin-top: 15px; 
+            border: 1px solid rgba(0, 0, 0, 0.1); 
+            color: #333;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+        }
+        
+        /* Custom Scrollbar for Log Box */
+        .log-box::-webkit-scrollbar { width: 6px; }
+        .log-box::-webkit-scrollbar-track { background: transparent; }
+        .log-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+
+        .green { color: var(--spotify); text-shadow: 0 0 10px rgba(30, 215, 96, 0.4); }
+
+        button#convert { 
+            background: rgba(255, 255, 255, 0.9); 
+            color: black;
+            text-transform: uppercase; 
+            letter-spacing: 1px;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.15);
+        }
+        button#convert:hover {
+            background: white;
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+        }
+
+        .footer-links { margin-top: 30px; font-size: 12px; color: var(--text-muted); text-align: center; z-index: 2; position: relative;}
+        .footer-links a { color: rgba(0,0,0,0.5); text-decoration: none; margin: 0 10px; transition: color 0.2s;}
+        .footer-links a:hover { color: black; text-decoration: none; }
+
+        /* Overlay - Frosted Glass Sheet */
+        .results-overlay { 
+            position: fixed; 
+            top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            display: none; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 100; 
+        }
+
         .buckets-container { display: flex; gap: 20px; width: 90%; max-width: 800px; height: 60vh; margin-top: 20px; }
-        .bucket { flex: 1; background: #252525; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; }
-        .bucket-list { flex: 1; overflow-y: auto; font-size: 13px; list-style: none; padding: 0; }
-        .bucket-list li { padding: 6px 0; border-bottom: 1px solid #333; }
-        .close-btn { margin-top: 30px; background: white; color: black; width: auto; padding: 12px 40px; }
+        
+        .bucket { 
+            flex: 1; 
+            background: rgba(255, 255, 255, 0.05); 
+            border: 1px solid var(--glass-border);
+            border-radius: 24px; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        
+        .bucket h3 { margin-top: 0; font-size: 16px; letter-spacing: 0.5px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px; }
+
+        .bucket-list { flex: 1; overflow-y: auto; font-size: 13px; list-style: none; padding: 0; color: rgba(255,255,255,0.8); }
+        .bucket-list li { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        
+        .close-btn { 
+            margin-top: 30px; 
+            background: var(--spotify); 
+            color: black; 
+            width: auto; 
+            padding: 14px 40px; 
+            box-shadow: 0 0 20px rgba(30, 215, 96, 0.4);
+        }
+
+        @media (max-width: 480px) {
+            .card { padding: 25px 20px; border-radius: 24px; }
+            .app-description h1 { font-size: 24px; }
+            .buckets-container { flex-direction: column; height: auto; }
+            .bucket { height: 250px; }
+        }
     </style>
 </head>
 <body>
     <div class="card">
-        <h2 style="text-align:center;">TuneChange</h2>
-        <div id="profiles"></div>
-        <button id="btn_sp" style="background:var(--spotify); color:white; margin-bottom:10px; display:none;">Login Spotify</button>
-        <button id="btn_yt" style="background:var(--yt); color:white; display:none;">Login YouTube</button>
-        
-        <label style="font-size: 12px; color: var(--spotify);">Spotify Source:</label>
-        <input id="playlistUrl" placeholder="Playlist URL e.g. https://open.spotify.com/playlist/... or LIKED for liked songs">
-        
-        <label style="font-size: 12px; color: var(--yt);">YouTube Destination:</label>
-        <input id="existingId" placeholder="Playlist ID e.g. PLbc6K08_6T7S1m... (Optional)">
-        
-        <div class="progress-container" id="p_container"><div class="progress-fill" id="p_fill"></div></div>
-        <button id="convert" style="background:white; color:black; margin-top:20px;">Start Conversion</button>
-        <div class="log-box" id="log">Ready...</div>
-    </div>
-    <div class="footer-links">
-        <a href="/privacy" target="_blank">Privacy Policy</a> | 
-        <a href="/terms" target="_blank">Terms of Service</a>
-    </div>
+        <header class="app-description">
+            <h1>TuneChange</h1>
+            <h2>The Free Spotify to YouTube Converter</h2>
+            <p>
+                Switching music platforms? <span class="highlight-text">TuneChange</span> is a specialized migration tool. 
+                Our app uses the <span class="highlight-text">Spotify API</span> to securely read your playlist data 
+                and the <span class="highlight-text">YouTube API</span> to create high-quality matching playlists 
+                directly in your YouTube library. Simple, fast, and automated.
+            </p>
+        </header>
 
-    <div class="results-overlay" id="overlay">
-        <h1 class="green">Done!</h1>
+        <main>
+            <div id="profiles"></div>
+            <button id="btn_sp" style="background:var(--spotify); color:white; margin-bottom:10px; display:none;">Login with Spotify</button>
+            <button id="btn_yt" style="background:var(--yt); color:white; display:none;">Login with YouTube</button>
+            
+            <label for="playlistUrl" style="font-size: 12px; color: var(--spotify); margin-top: 15px; display: block;">1. Paste Your Spotify Playlist Link</label>
+            <input id="playlistUrl" type="url" placeholder="Playlist URL e.g. https://open.spotify.com/playlist/... or LIKED for liked songs">
+            
+            <label for="existingId" style="font-size: 12px; color: var(--yt); display: block;">2. Target YouTube Playlist Link or ID (Optional)</label>
+            <input id="existingId" type="text" placeholder="Paste YouTube Playlist Link or Playlist ID">
+            
+            <div class="progress-container" id="p_container"><div class="progress-fill" id="p_fill"></div></div>
+            <button id="convert" style="background:black; color:white; margin-top:20px;">Convert Playlist Now</button>
+            <div class="log-box" id="log" aria-live="polite">Status: Ready for migration...</div>
+        </main>
+    </div>
+    <footer class="footer-links">
+        <a href="/privacy">Privacy Policy</a> | 
+        <a href="/terms">Terms of Service</a> |
+        <a href="mailto:viratrahul0718@gmail.com">Support</a>
+    </footer>
+
+    <div class="results-overlay" id="overlay" role="dialog" aria-labelledby="migration-done">
+        <h1 id="migration-done" class="green">Success! Migration Finished</h1>
         <div id="final-link"></div>
         <div class="buckets-container">
-            <div class="bucket"><h3>Added (<span id="success-count">0</span>)</h3><ul class="bucket-list" id="success-list"></ul></div>
-            <div class="bucket"><h3>Failed (<span id="failed-count">0</span>)</h3><ul class="bucket-list" id="failed-list"></ul></div>
+            <div class="bucket"><h3>Tracks Added (<span id="success-count">0</span>)</h3><ul class="bucket-list" id="success-list"></ul></div>
+            <div class="bucket"><h3>Not Found (<span id="failed-count">0</span>)</h3><ul class="bucket-list" id="failed-list"></ul></div>
         </div>
-        <button class="close-btn" onclick="location.reload()">New Conversion</button>
+        <button class="close-btn" onclick="location.reload()">Start New Migration</button>
     </div>
 
 <script>
@@ -563,7 +820,25 @@ app.get('/', (req, res) => {
 
     function showOverlay(url, s, f) {
         document.getElementById('overlay').style.display = 'flex';
-        document.getElementById('final-link').innerHTML = \`<a href="\${url}" target="_blank" style="color:var(--spotify); font-weight:bold;">🔗 Open YouTube Playlist</a>\`;
+        const playlistId = url.split('list=')[1];
+    
+    document.getElementById('final-link').innerHTML = \`
+        <div style="width:100%; margin-bottom:20px;">
+            <iframe 
+                width="100%" 
+                height="315" 
+                src="https://www.youtube.com/embed/videoseries?list=\${playlistId}" 
+                title="YouTube playlist player" 
+                frameborder="0" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowfullscreen
+                style="border-radius:12px; border:2px solid var(--yt);">
+            </iframe>
+        </div>
+        <a href="\${url}" target="_blank" class="logout" style="border-color:var(--spotify); color:var(--spotify); font-size:16px; padding:10px 20px;">
+            Open in YouTube App ↗
+        </a>
+    \`;
         document.getElementById('success-count').innerText = s.length;
         document.getElementById('failed-count').innerText = f.length;
         s.forEach(t => document.getElementById('success-list').innerHTML += \`<li>\${t}</li>\`);
