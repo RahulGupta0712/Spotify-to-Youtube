@@ -438,6 +438,8 @@ app.get('/', (req, res) => {
     <meta name="author" content="TuneChange">
     <link rel="canonical" href="https://tunechange.xyz/" />
 
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content:; style-src * 'self' 'unsafe-inline'; media-src *; img-src * 'self' data: content: https://i.scdn.co https://lh3.googleusercontent.com https://yt3.ggpht.com; frame-src * youtube.com www.youtube.com;">
+
     <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
     <style>
         :root { 
@@ -465,6 +467,11 @@ app.get('/', (req, res) => {
             box-sizing: border-box;
             overflow-x: hidden;
             position: relative;
+        }
+
+        body.noscroll {
+            overflow: hidden !important;
+            height: 100vh;
         }
 
         /* Ambient Background Orbs for Glass Effect */
@@ -610,7 +617,7 @@ app.get('/', (req, res) => {
         /* Progress Bar */
         .progress-container { 
             width: 100%; 
-            background: rgba(255,255,255,0.1); 
+            background: var(--spotify); 
             border-radius: 20px; 
             height: 8px; 
             margin: 25px 0; 
@@ -618,7 +625,7 @@ app.get('/', (req, res) => {
             overflow: hidden; 
             border: 1px solid rgba(255,255,255,0.05);
         }
-        .progress-fill { height: 100%; background: var(--spotify); width: 0%; box-shadow: 0 0 10px var(--spotify); transition: width 0.4s ease; }
+        .progress-fill { height: 100%; background: var(--yt); width: 0%; box-shadow: 0 0 10px var(--spotify); transition: width 0.4s ease; }
 
         /* Log Box - Dark Glass */
         .log-box { 
@@ -668,11 +675,25 @@ app.get('/', (req, res) => {
             display: none; 
             flex-direction: column; 
             align-items: center; 
-            justify-content: center; 
+            justify-content: flex-start; 
             z-index: 100; 
+            overflow: hidden;
+        }
+        .results-overlay h1 {
+            color: var(--spotify);
+            font-size: 24px;
+            margin: 10px 0 15px 0;
+            flex-shrink: 0; /* Prevent shrinking */
         }
 
-        .buckets-container { display: flex; gap: 20px; width: 90%; max-width: 800px; height: 60vh; margin-top: 20px; }
+        .buckets-container { display: flex; 
+            gap: 15px; 
+            width: 100%; 
+            max-width: 800px; 
+            /* This is the magic part: */
+            flex: 1;           /* Take all remaining space */
+            min-height: 0;     /* Allow flex child to shrink below content size */
+            margin-bottom: 15px; }
         
         .bucket { 
             flex: 1; 
@@ -681,6 +702,8 @@ app.get('/', (req, res) => {
             border-radius: 24px; 
             padding: 20px; 
             display: flex; 
+            height: 100%;
+            overflow: hidden;
             flex-direction: column; 
             box-shadow: 0 20px 40px rgba(0,0,0,0.3);
         }
@@ -689,7 +712,9 @@ app.get('/', (req, res) => {
 
         .bucket-list { flex: 1; overflow-y: auto; font-size: 13px; list-style: none; padding: 0; color: rgba(255,255,255,0.8); }
         .bucket-list li { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        
+        .bucket-list::-webkit-scrollbar { width: 4px; }
+        .bucket-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
+
         .close-btn { 
             margin-top: 30px; 
             background: var(--spotify); 
@@ -749,10 +774,14 @@ app.get('/', (req, res) => {
             <div class="bucket"><h3>Tracks Added (<span id="success-count">0</span>)</h3><ul class="bucket-list" id="success-list"></ul></div>
             <div class="bucket"><h3>Not Found (<span id="failed-count">0</span>)</h3><ul class="bucket-list" id="failed-list"></ul></div>
         </div>
-        <button class="close-btn" onclick="location.reload()">Start New Migration</button>
+        <button class="close-btn" id="reload-page">Start New Migration</button>
     </div>
 
 <script>
+// Ensure the reload button works reliably
+document.getElementById('reload-page').onclick = function() {
+    window.location.href = window.location.origin;
+};
     let isConverting = false;
 
     window.addEventListener('message', (event) => {
@@ -763,23 +792,39 @@ app.get('/', (req, res) => {
 
     async function updateProfiles() {
         if (isConverting) return;
-        const res = await fetch('/auth/profiles?t=' + Date.now());
-        const data = await res.json();
-        const container = document.getElementById('profiles');
-        container.innerHTML = '';
-        
-        let sLinked = !!data.spotify;
-        let yLinked = !!data.youtube;
+        try {
+            const res = await fetch('/auth/profiles?t=' + Date.now());
+            const data = await res.json();
+            const container = document.getElementById('profiles');
+            container.innerHTML = '';
+            
+            let sLinked = !!data.spotify;
+            let yLinked = !!data.youtube;
 
-        if(sLinked) {
-            document.getElementById('btn_sp').style.display = 'none';
-            container.innerHTML += \`<div class="user-row spotify"><div class="user-info"><img src="\${data.spotify.image || ''}"><div><span class="platform-label">Spotify Account</span>\${data.spotify.name}</div></div><a href="/auth/logout/spotify" class="logout nav-link">Disconnect</a></div>\`;
-        } else { document.getElementById('btn_sp').style.display = 'block'; }
-        
-        if(yLinked) {
-            document.getElementById('btn_yt').style.display = 'none';
-            container.innerHTML += \`<div class="user-row youtube"><div class="user-info"><img src="\${data.youtube.image || ''}"><div><span class="platform-label">YouTube Account</span>\${data.youtube.name}</div></div><a href="/auth/logout/youtube" class="logout nav-link">Disconnect</a></div>\`;
-        } else { document.getElementById('btn_yt').style.display = 'block'; }
+            if(sLinked) {
+                document.getElementById('btn_sp').style.display = 'none';
+                container.innerHTML += \`
+                    <div class="user-row spotify">
+                        <div class="user-info">
+                            <img src="\${data.spotify.image || ''}" crossorigin="anonymous" onerror="this.style.display='none'">
+                            <div><span class="platform-label">Spotify Account</span>\${data.spotify.name}</div>
+                        </div>
+                        <a href="/auth/logout/spotify" class="logout">Disconnect</a>
+                    </div>\`;
+            } else { document.getElementById('btn_sp').style.display = 'block'; }
+            
+            if(yLinked) {
+                document.getElementById('btn_yt').style.display = 'none';
+                container.innerHTML += \`
+                    <div class="user-row youtube">
+                        <div class="user-info">
+                            <img src="\${data.youtube.image || ''}" crossorigin="anonymous" onerror="this.style.display='none'">
+                            <div><span class="platform-label">YouTube Account</span>\${data.youtube.name}</div>
+                        </div>
+                        <a href="/auth/logout/youtube" class="logout">Disconnect</a>
+                    </div>\`;
+            } else { document.getElementById('btn_yt').style.display = 'block'; }
+        } catch (err) { console.error("Error fetching profiles", err); }
     }
     
     updateProfiles();
@@ -819,26 +864,30 @@ app.get('/', (req, res) => {
     };
 
     function showOverlay(url, s, f) {
+    document.body.classList.add('noscroll');
         document.getElementById('overlay').style.display = 'flex';
-        const playlistId = url.split('list=')[1];
+        let playlistId = "";
+        try {
+            const urlObj = new URL(url);
+            playlistId = urlObj.searchParams.get("list");
+        } catch(e) { console.log("URL parse error", e); }
     
     document.getElementById('final-link').innerHTML = \`
-        <div style="width:100%; margin-bottom:20px;">
-            <iframe 
-                width="100%" 
-                height="315" 
-                src="https://www.youtube.com/embed/videoseries?list=\${playlistId}" 
-                title="YouTube playlist player" 
-                frameborder="0" 
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                allowfullscreen
-                style="border-radius:12px; border:2px solid var(--yt);">
-            </iframe>
-        </div>
-        <a href="\${url}" target="_blank" class="logout" style="border-color:var(--spotify); color:var(--spotify); font-size:16px; padding:10px 20px;">
-            Open in YouTube App ↗
-        </a>
-    \`;
+            <div style="width:100%; border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+                <iframe 
+                    width="100%" 
+                    height="200" 
+                    src="https://www.youtube.com/embed/videoseries?list=\${playlistId}" 
+                    title="YouTube playlist player" 
+                    frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen>
+                </iframe>
+            </div>
+            <a href="\${url}" target="_blank" class="logout" style="margin-top:10px; border:1px solid var(--spotify); color:var(--spotify); font-size:14px; padding:8px 16px; background:rgba(0,0,0,0.5);">
+                Open in YouTube App ↗
+            </a>
+        \`;
         document.getElementById('success-count').innerText = s.length;
         document.getElementById('failed-count').innerText = f.length;
         s.forEach(t => document.getElementById('success-list').innerHTML += \`<li>\${t}</li>\`);
