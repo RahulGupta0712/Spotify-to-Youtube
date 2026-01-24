@@ -129,56 +129,129 @@ function makeOAuth2Client() {
     return new google.auth.OAuth2(process.env.YOUTUBE_CLIENT_ID, process.env.YOUTUBE_CLIENT_SECRET, process.env.YOUTUBE_REDIRECT_URI);
 }
 
-// --- LEGAL ROUTES (Required for Publishing) ---
+// --- LEGAL ROUTES ---
 
 const commonStyles = `
     <style>
-        body { font-family: sans-serif; background: #121212; color: #ddd; max-width: 800px; margin: 0 auto; padding: 40px 20px; line-height: 1.6; }
-        h1 { color: white; border-bottom: 2px solid #333; padding-bottom: 10px; }
-        h2 { color: white; margin-top: 30px; }
-        a { color: #1DB954; }
-        .back { display: inline-block; margin-bottom: 20px; color: #aaa; text-decoration: none; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: #121212; 
+            color: #e0e0e0; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 40px 20px; 
+            line-height: 1.6; 
+        }
+        h1 { 
+            color: white; 
+            border-bottom: 1px solid #333; 
+            padding-bottom: 15px; 
+            margin-bottom: 30px;
+        }
+        h2 { 
+            color: #1DB954; /* Spotify Green for contrast */
+            margin-top: 40px; 
+            font-size: 1.4em;
+        }
+        h3 {
+            color: #fff;
+            margin-top: 20px;
+            font-size: 1.1em;
+        }
+        p, li {
+            color: #ccc;
+            font-size: 15px;
+        }
+        a { 
+            color: #1DB954; 
+            text-decoration: none; 
+            border-bottom: 1px solid transparent;
+            transition: border-bottom 0.2s;
+        }
+        a:hover { border-bottom: 1px solid #1DB954; }
+        .back { 
+            display: inline-block; 
+            margin-bottom: 20px; 
+            color: #888; 
+            font-size: 14px;
+        }
         .back:hover { color: white; }
+        .highlight {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 5px;
+            border-radius: 4px;
+            color: #fff;
+        }
+        .legal-box {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin: 20px 0;
+        }
     </style>
 `;
 
 app.get('/privacy', (req, res) => {
     res.send(`<!doctype html>
         <html>
-        <head><title>Privacy Policy - TuneChange</title>
-        ${commonStyles}</head>
+        <head>
+            <title>Privacy Policy - TuneChange</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            ${commonStyles}
+        </head>
         <body>
             <a href="/" class="back">← Back to App</a>
             <h1>Privacy Policy</h1>
-            <p><strong>Last Updated:</strong> January 3, 2026</p>
+            <p><strong>Last Updated:</strong> January 24, 2026</p>
+
+            <div class="legal-box">
+                <p><strong>Summary:</strong> TuneChange is a data migration tool. We do not sell your data. We do not store your music history permanently. We only use your data to perform the transfer you requested.</p>
+            </div>
 
             <h2>1. Introduction</h2>
-            <p>TuneChange respects your privacy. This policy explains how we handle your data in compliance with YouTube API Services Developer Policies.</p>
+            <p>TuneChange ("we", "our", or "us") respects your privacy. This Privacy Policy describes how we access, collect, use, and share your data when you use our Spotify to YouTube migration service. This application uses YouTube API Services and adheres to the Google Privacy Policy.</p>
 
             <h2>2. Data We Access and Collect</h2>
+            <p>We strictly limit our data access to the minimum required to function:</p>
             <ul>
-                <li><strong>Spotify Data:</strong> We access your public profile and playlist metadata to identify tracks for migration.</li>
-                <li><strong>YouTube API Data:</strong> Our application accesses, collects, and uses YouTube API Data to verify your channel identity and manage your playlists. This includes creating new playlists and adding matching music videos on your behalf.</li>
-                <li><strong>Cookies & Local Storage:</strong> We store information directly or indirectly on your device, including the use of <strong>cookies or similar technologies</strong>, to maintain your session and application functionality.</li>
+                <li><strong>Spotify Data:</strong> We access your public profile (to display your name) and playlist metadata (track names, artists) to identify songs for migration.</li>
+                <li><strong>YouTube API Data:</strong> We access your YouTube channel information to verify your identity and manage your playlists. This includes permission to create new playlists and add video items on your behalf.</li>
+                <li><strong>Cookies:</strong> We use secure, HTTP-only cookies to maintain your session while you are using the tool.</li>
             </ul>
 
-            <h2>3. How We Use and Share Data</h2>
-            <p>Data is used exclusively to facilitate the transfer of music. <span class="highlight">We do not share your information or YouTube API Data with any external third parties.</span></p>
+            <h2>3. Data Protection Mechanisms (Security)</h2>
+            <p>We take the protection of your sensitive data seriously. We employ the following mechanisms to ensure your data is secure:</p>
+            <ul>
+                <li><strong>Encryption in Transit:</strong> All data transmitted between your browser, our servers, and third-party APIs (Spotify/Google) is encrypted using <strong>HTTPS/TLS 1.2+</strong> standards.</li>
+                <li><strong>Ephemeral Processing (In-Memory):</strong> Your music playlist data and access tokens are processed in temporary memory (RAM). We <strong>do not store</strong> your playlist history, song choices, or YouTube API data in any persistent database. Once your session ends or you close the tab, this data is cleared.</li>
+                <li><strong>Secure Token Storage:</strong> Access tokens (OAuth credentials) are stored in encrypted, signed cookies on your device and are never exposed to client-side scripts (HttpOnly).</li>
+            </ul>
 
-            <h2>4. Data Retention</h2>
-            <p>We do not store your personal music history or YouTube API Data on any persistent server. All data is processed in temporary memory during your active session and is cleared once the migration is complete.</p>
+            <h2>4. How We Use Your Data (Limited Use)</h2>
+            <p>Our use of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" target="_blank">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+            <ul>
+                <li>We use your data <strong>exclusively</strong> to search for matching music videos on YouTube and add them to your playlist.</li>
+                <li>We <strong>do not</strong> use your data for advertising purposes.</li>
+                <li>We <strong>do not</strong> sell your data to third parties.</li>
+                <li>We <strong>do not</strong> use your data to train AI models.</li>
+            </ul>
 
-            <h2>5. Third-Party Services</h2>
-            <p>TuneChange uses <strong>YouTube API Services</strong>. By using this app, you agree to the <a href="https://www.youtube.com/t/terms" target="_blank">YouTube Terms of Service</a> and the <a href="http://www.google.com/policies/privacy" target="_blank">Google Privacy Policy</a>.</p>
+            <h2>5. Data Retention</h2>
+            <p>We practice data minimization. User data is retained only for the duration of your active session to facilitate the migration. Operational logs (used for debugging) are anonymized and do not contain personally identifiable music history.</p>
 
-            <h2>6. Revoking Access</h2>
-            <p>You can revoke access at any time via the <a href="https://security.google.com/settings/security/permissions" target="_blank">Google Security Settings</a> page.</p>
-            
-            <h2>7. Operational Logging:</h2> 
-            <p>We use Axiom.co to monitor application performance and quota usage. No personally identifiable music history is stored in these logs.</p>
-            
+            <h2>6. Third-Party Services</h2>
+            <p>TuneChange uses <strong>YouTube API Services</strong>. By using this app, you verify that you have read and agreed to the:</p>
+            <ul>
+                <li><a href="https://www.youtube.com/t/terms" target="_blank">YouTube Terms of Service</a></li>
+                <li><a href="http://www.google.com/policies/privacy" target="_blank">Google Privacy Policy</a></li>
+            </ul>
+
+            <h2>7. Revoking Access</h2>
+            <p>You may revoke TuneChange's access to your data at any time via the <a href="https://security.google.com/settings/security/permissions" target="_blank">Google Security Settings</a> page.</p>
+
             <h2>8. Contact</h2>
-            <p>Questions? Contact us at: viratrahul0718@gmail.com</p>
+            <p>If you have questions about this policy or your data security, please contact us at: <span class="highlight">viratrahul0718@gmail.com</span></p>
         </body>
         </html>
     `);
@@ -187,28 +260,45 @@ app.get('/privacy', (req, res) => {
 app.get('/terms', (req, res) => {
     res.send(`<!doctype html>
         <html>
-        <head><title>Terms of Service - TuneChange</title>
-        <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
-        ${commonStyles}</head>
+        <head>
+            <title>Terms of Service - TuneChange</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
+            ${commonStyles}
+        </head>
         <body>
             <a href="/" class="back">← Back to App</a>
             <h1>Terms of Service</h1>
-            <p><strong>Last Updated:</strong> January 3, 2026</p>
+            <p><strong>Last Updated:</strong> January 24, 2026</p>
 
             <h2>1. Acceptance of Terms</h2>
-            <p>By accessing and using TuneChange, you accept and agree to be bound by the terms and provision of this agreement.</p>
+            <p>By accessing and using TuneChange, you accept and agree to be bound by the terms and provisions of this agreement. If you do not agree to abide by these terms, please do not use this service.</p>
 
             <h2>2. YouTube API Services</h2>
-            <p>This client uses YouTube API Services. By using this client, you agree to be bound by the <a href="https://www.youtube.com/t/terms" target="_blank">YouTube Terms of Service</a>.</p>
+            <p>This application uses YouTube API Services to function. By using TuneChange, you verify that you have read and agree to be bound by the <a href="https://www.youtube.com/t/terms" target="_blank">YouTube Terms of Service</a>.</p>
 
-            <h2>3. Disclaimer</h2>
-            <p>TuneChange is provided "as is" without any warranties. We are not responsible for any data loss, incorrect song matching, or changes to your YouTube account/playlists.</p>
+            <h2>3. Description of Service</h2>
+            <p>TuneChange provides a tool to migrate music metadata from Spotify playlists to YouTube playlists. The service acts as an intermediary automation tool triggered by user action.</p>
 
             <h2>4. User Responsibilities</h2>
-            <p>You agree not to use this service for any illegal or unauthorized purpose.</p>
+            <p>You agree to use this application only for lawful purposes. You are responsible for ensuring you have the necessary rights to create playlists on the connected YouTube account.</p>
+
+            <h2>5. Disclaimer of Warranties</h2>
+            <p>TuneChange is provided "as is" without any warranties of any kind. We are not responsible for:</p>
+            <ul>
+                <li>Any data loss or corruption during transfer.</li>
+                <li>Incorrect song matching (as YouTube search results may vary).</li>
+                <li>Changes to your YouTube account or playlists resulting from your use of the tool.</li>
+            </ul>
+
+            <h2>6. Limitation of Liability</h2>
+            <p>In no event shall TuneChange or its developers be liable for any direct, indirect, incidental, or consequential damages arising out of the use or inability to use the service.</p>
+
+            <h2>7. Changes to Terms</h2>
+            <p>We reserve the right to modify these terms at any time. Continued use of the service constitutes acceptance of the new terms.</p>
             
-            <h2>5. Changes to Terms</h2>
-            <p>We reserve the right to modify these terms at any time.</p>
+            <h2>8. Contact Information</h2>
+            <p>For support or legal inquiries, please contact: viratrahul0718@gmail.com</p>
         </body>
         </html>
     `);
@@ -837,13 +927,13 @@ width: 300px;
             <button id="btn_yt" style="background:var(--yt); color:white; display:none;">Login with YouTube</button>
             
             <label for="playlistUrl" style="font-size: 12px; color: var(--spotify); margin-top: 15px; display: block;">1. Paste Your Spotify Playlist Link</label>
-            <input id="playlistUrl" type="url" placeholder="Paste link here...">
+            <input id="playlistUrl" type="url" placeholder="Paste link here..." autocomplete="off">
             <span class="input-hint">
                 Examples: <b>https://open.spotify.com/playlist/...</b> or type <b>LIKED</b> for your liked songs.
             </span>
             
             <label for="existingId" style="font-size: 12px; color: var(--yt); display: block;">2. Target YouTube Playlist (Optional)</label>
-            <input id="existingId" type="text" placeholder="Paste link or ID here...">
+            <input id="existingId" type="text" placeholder="Paste link or ID here..." autocomplete="off">
             <span class="input-hint">
                 Leave blank for a new playlist. <br>
                 <b>Link: </b>https://www.youtube.com/playlist?list=...<br>
