@@ -12,7 +12,7 @@ const helmet = require('helmet');
 const path = require('path');
 require('dotenv').config();
 const winston = require('winston');
-const { WinstonTransport } = require('@axiomhq/winston'); 
+const { WinstonTransport } = require('@axiomhq/winston');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -31,26 +31,26 @@ const logger = winston.createLogger({
 });
 
 const auditLog = (event, details) => {
-    logger.info(event, { 
-        ...details, 
+    logger.info(event, {
+        ...details,
         timestamp: new Date().toISOString(),
-        useCase: 'Spotify-to-YouTube-Migration' 
+        useCase: 'Spotify-to-YouTube-Migration'
     });
 };
 
 // Allow inline scripts for our popup callbacks
-app.use(helmet({ 
+app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             "default-src": ["'self'"],
             // Allow your inline scripts for the popup callback logic
-            "script-src": ["'self'", "'unsafe-inline'"], 
+            "script-src": ["'self'", "'unsafe-inline'"],
             "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             // Allow images from Spotify and Google/YouTube for user profiles
             "img-src": ["'self'", "https://*.scdn.co", "https://*.googleusercontent.com", "https://*.ytimg.com", "data:"]
         }
     },
-    crossOriginOpenerPolicy: { policy: "unsafe-none" } 
+    crossOriginOpenerPolicy: { policy: "unsafe-none" }
 }));
 
 app.use(bodyParser.json());
@@ -63,7 +63,7 @@ app.use(cookieSession({
     name: 'session',
     keys: [process.env.SESSION_SECRET || 'secure_production_secret'],
     maxAge: 60 * 60 * 1000,
-    secure: isProduction, 
+    secure: isProduction,
     httpOnly: true,
     sameSite: 'lax'
 }));
@@ -107,13 +107,13 @@ async function fetchAllSpotifyTracks(playlistId, token) {
     // Simple pagination handling
     while (url) {
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) return tracks.length > 0 ? tracks : null; 
+        if (!res.ok) return tracks.length > 0 ? tracks : null;
 
         const data = await res.json();
         data.items.forEach(item => {
             if (item.track) tracks.push({ name: item.track.name, artist: item.track.artists[0].name });
         });
-        url = data.next; 
+        url = data.next;
     }
     return tracks;
 }
@@ -218,13 +218,13 @@ app.get('/terms', (req, res) => {
 
 app.get('/auth/profiles', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    
+
     let profiles = { spotify: null, youtube: null };
-    
+
     if (req.session.spotifyTokens) {
         try {
             const sRes = await fetch('https://api.spotify.com/v1/me', { headers: { Authorization: `Bearer ${req.session.spotifyTokens.access_token}` } });
-            if(sRes.ok) {
+            if (sRes.ok) {
                 const sData = await sRes.json();
                 profiles.spotify = { name: sData.display_name, image: sData.images?.[0]?.url };
             } else { req.session.spotifyTokens = null; }
@@ -237,7 +237,7 @@ app.get('/auth/profiles', async (req, res) => {
             oauth.setCredentials(req.session.googleTokens);
             const youtube = google.youtube({ version: 'v3', auth: oauth });
             const yRes = await youtube.channels.list({ part: 'snippet', mine: true });
-            
+
             if (yRes.data.items && yRes.data.items.length > 0) {
                 const chan = yRes.data.items[0].snippet;
                 profiles.youtube = { name: chan.title, image: chan.thumbnails.default.url };
@@ -247,11 +247,11 @@ app.get('/auth/profiles', async (req, res) => {
                 profiles.youtube = { name: "Google Account (No Channel)", image: "https://www.gstatic.com/youtube/img/branding/favicon/favicon_144x144.png" };
                 console.log("User logged in, but no YouTube Channel found.");
             }
-        } catch (e) { 
+        } catch (e) {
             // CRITICAL: Log the specific error to your terminal
-            console.error("YouTube API Error during profile fetch:", e); 
+            console.error("YouTube API Error during profile fetch:", e);
             console.error("Error details:", e.response ? e.response.data : e.message);
-            
+
             // Only kill session if it's an Auth error
             if (e.code === 401 || e.code === 403) {
                 req.session.googleTokens = null;
@@ -287,17 +287,17 @@ app.get('/spotify/callback', async (req, res) => {
         });
         const tokens = await resToken.json();
         req.session.spotifyTokens = tokens;
-        
+
         res.send(`<script>if(window.opener){window.opener.postMessage({type:'SPOTIFY_CONNECTED'},'*');}window.close();</script>`);
-    } catch(e) { res.send('Error logging in'); }
+    } catch (e) { res.send('Error logging in'); }
 });
 
 app.get('/auth/youtube', (req, res) => {
     const oauth = makeOAuth2Client();
-    const url = oauth.generateAuthUrl({ 
-        access_type: 'offline', 
-        scope: ['https://www.googleapis.com/auth/youtube'], 
-        prompt: 'select_account consent' 
+    const url = oauth.generateAuthUrl({
+        access_type: 'offline',
+        scope: ['https://www.googleapis.com/auth/youtube'],
+        prompt: 'select_account consent'
     });
     res.redirect(url);
 });
@@ -307,9 +307,9 @@ app.get('/oauth2callback', async (req, res) => {
     try {
         const { tokens } = await oauth.getToken(req.query.code);
         req.session.googleTokens = tokens;
-        
+
         res.send(`<script>if(window.opener){window.opener.postMessage({type:'YOUTUBE_CONNECTED'},'*');}window.close();</script>`);
-    } catch(e) { res.send('Error logging in'); }
+    } catch (e) { res.send('Error logging in'); }
 });
 
 // --- REAL-TIME CONVERSION ROUTE ---
@@ -339,34 +339,45 @@ app.get('/stream-convert', async (req, res) => {
         oauth.setCredentials(req.session.googleTokens);
         const youtube = google.youtube({ version: 'v3', auth: oauth });
 
+        // Verify user actually has a channel before attempting operations
+        try {
+            const channelCheck = await youtube.channels.list({ part: 'id', mine: true });
+            if (!channelCheck.data.items || channelCheck.data.items.length === 0) {
+                return send({ error: "No YouTube Channel found. Please create a channel on YouTube first." });
+            }
+        } catch (e) {
+            return send({ error: "Failed to verify YouTube channel status." });
+        }
+
         let ytId = existingId?.trim();
         if (ytId && ytId.includes('list=')) {
             const urlParams = new URLSearchParams(ytId.split('?')[1]);
             ytId = urlParams.get('list');
         }
+
+
         
-        // FIX: Remove 'mine: true' check. 
         // Just verify ID existence to support Brand Accounts/Shared Playlists properly.
         if (ytId) {
             try {
-                const check = await youtube.playlists.list({ 
-                    part: 'snippet', 
-                    id: ytId 
+                const check = await youtube.playlists.list({
+                    part: 'snippet',
+                    id: ytId
                 });
-                
+
                 if (!check.data.items || check.data.items.length === 0) {
                     return send({ error: "YouTube Playlist ID not found." });
                 }
                 // If it exists, we proceed. We assume we have write permissions.
                 // If we don't, the item insert loop below will catch the error.
-            } catch (e) { 
-                return send({ error: "YouTube API Error: " + e.message }); 
+            } catch (e) {
+                return send({ error: "YouTube API Error: " + e.message });
             }
         }
 
         let tracks = await fetchAllSpotifyTracks(playlistId, spToken);
         if (!tracks) return send({ error: 'Spotify access failed. Check URL or privacy.' });
-        
+
         // Create new playlist if no ID provided
         if (!ytId) {
             stats.quotaEstimated += 50; // Cost of creating the playlist itself
@@ -381,9 +392,9 @@ app.get('/stream-convert', async (req, res) => {
                 } catch (e) { console.log("Name fetch failed, using default"); }
             }
 
-            const p = await youtube.playlists.insert({ 
-                part: 'snippet,status', 
-                requestBody: { snippet: { title: title }, status: { privacyStatus: 'private' } } 
+            const p = await youtube.playlists.insert({
+                part: 'snippet,status',
+                requestBody: { snippet: { title: title }, status: { privacyStatus: 'private' } }
             });
             ytId = p.data.id;
         }
@@ -395,9 +406,9 @@ app.get('/stream-convert', async (req, res) => {
             const vid = await searchYouTube(`${track.name} ${track.artist} official audio`);
             if (vid) {
                 try {
-                    await youtube.playlistItems.insert({ 
-                        part: 'snippet', 
-                        requestBody: { snippet: { playlistId: ytId, resourceId: { kind: 'youtube#video', videoId: vid } } } 
+                    await youtube.playlistItems.insert({
+                        part: 'snippet',
+                        requestBody: { snippet: { playlistId: ytId, resourceId: { kind: 'youtube#video', videoId: vid } } }
                     });
                     // Inside the loop after a successful YouTube insert:
                     stats.success++;
@@ -429,7 +440,7 @@ app.get('/', (req, res) => {
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
     <title>TuneChange - Best Spotify to YouTube Playlist Converter & Migrator</title>
     
@@ -438,7 +449,7 @@ app.get('/', (req, res) => {
     <meta name="author" content="TuneChange">
     <link rel="canonical" href="https://tunechange.xyz/" />
 
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content:; style-src * 'self' 'unsafe-inline'; media-src *; img-src * 'self' data: content: https://i.scdn.co https://lh3.googleusercontent.com https://yt3.ggpht.com; frame-src * youtube.com www.youtube.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content:; style-src * 'self' 'unsafe-inline'; media-src *; img-src * 'self' data: content: https://i.scdn.co https://*.scdn.co https://*.googleusercontent.com https://*.ytimg.com https://*.ggpht.com https://*.fbsbx.com; frame-src * https://www.youtube.com https://youtube.com https://*.youtube.com;">
 
     <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
     <style>
@@ -452,7 +463,15 @@ app.get('/', (req, res) => {
             --text-main: #1d1d1f;
             --text-muted: rgba(0, 0, 0, 0.5);
         }
-
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+        body {
+            width: 100%;
+            overflow-x: hidden; /* Strict horizontal cutoff */
+            margin: 0;
+            padding: 0;
+        }
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
             background: var(--bg); 
@@ -462,10 +481,8 @@ app.get('/', (req, res) => {
             align-items: center; 
             justify-content: center; 
             min-height: 100vh; 
-            margin: 0; 
+            min-height: 100dvh; /* Mobile browser fix */
             padding: 20px; 
-            box-sizing: border-box;
-            overflow-x: hidden;
             position: relative;
         }
 
@@ -478,12 +495,15 @@ app.get('/', (req, res) => {
         body::before, body::after {
             content: '';
             position: absolute;
-            width: 500px;
-            height: 500px;
+            width: 60vw;  /* Changed from 500px to responsive width */
+            height: 60vw; /* Changed from 500px to responsive height */
+            max-width: 500px; /* Cap it for desktop */
+            max-height: 500px;
             border-radius: 50%;
             z-index: -1;
             filter: blur(80px);
             opacity: 0.5;
+            pointer-events: none; /* Ensure they don't block clicks */
         }
         body::before {
             background: var(--spotify);
@@ -668,67 +688,133 @@ app.get('/', (req, res) => {
         /* Overlay - Frosted Glass Sheet */
         .results-overlay { 
             position: fixed; 
-            top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0, 0, 0, 0.6);
+            top: 0; left: 0; 
+            width: 100%; 
+            height: 100%; 
+            height: 100dvh; /* Mobile layout fix */
+            background: rgba(0, 0, 0, 0.9); /* Darker for better contrast */
             backdrop-filter: blur(40px);
             -webkit-backdrop-filter: blur(40px);
             display: none; 
             flex-direction: column; 
             align-items: center; 
-            justify-content: flex-start; 
-            z-index: 100; 
-            overflow: hidden;
+            padding: 20px; 
+            z-index: 1000;
+            overflow-y: auto; 
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain; /* Prevents body scroll */
         }
+
+        /* Container for the lists */
+        .buckets-container { 
+            display: flex; 
+            gap: 20px; 
+            width: 100%; 
+            max-width: 800px; 
+            flex-shrink: 0; /* Prevents crushing */
+            margin-bottom: 30px;
+        }
+
+        .bucket { 
+            flex: 1; 
+            background: rgba(255, 255, 255, 0.08); 
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            max-height: 60vh; /* Don't let lists take over entire screen */
+            min-height: 200px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        /* Mobile Specific Adjustments */
+        @media (max-width: 600px) {
+            .buckets-container {
+                flex-direction: column;
+            }
+            .bucket {
+                max-height: 300px; /* Smaller height on mobile per list */
+            }
+            .close-btn {
+                width: 100%; /* Full width button on mobile */
+            }
+        }
+
+#final-link {
+    width: 100%;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px; /* Gap between Iframe and 'Open App' link */
+    flex-shrink: 0;
+    margin-bottom: 20px;
+}
+
+.close-btn { 
+width: 300px;
+    background: var(--spotify); 
+    color: black; 
+    padding: 16px 40px; 
+    border-radius: 50px; /* Pill shape */
+    font-weight: 800;
+    flex-shrink: 0;
+    margin-top: 10px;
+    box-shadow: 0 10px 20px rgba(30, 215, 96, 0.3);
+}
         .results-overlay h1 {
             color: var(--spotify);
             font-size: 24px;
             margin: 10px 0 15px 0;
             flex-shrink: 0; /* Prevent shrinking */
+            text-align: center;
         }
 
-        .buckets-container { display: flex; 
-            gap: 15px; 
-            width: 100%; 
-            max-width: 800px; 
-            /* This is the magic part: */
-            flex: 1;           /* Take all remaining space */
-            min-height: 0;     /* Allow flex child to shrink below content size */
-            margin-bottom: 15px; }
-        
-        .bucket { 
-            flex: 1; 
-            background: rgba(255, 255, 255, 0.05); 
-            border: 1px solid var(--glass-border);
-            border-radius: 24px; 
-            padding: 20px; 
-            display: flex; 
-            height: 100%;
-            overflow: hidden;
-            flex-direction: column; 
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-        }
+       
         
         .bucket h3 { margin-top: 0; font-size: 16px; letter-spacing: 0.5px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px; }
 
-        .bucket-list { flex: 1; overflow-y: auto; font-size: 13px; list-style: none; padding: 0; color: rgba(255,255,255,0.8); }
+        .bucket-list { flex: 1; overflow-y: auto; font-size: 13px; list-style: none; padding: 0;  }
         .bucket-list li { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
         .bucket-list::-webkit-scrollbar { width: 4px; }
         .bucket-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
 
-        .close-btn { 
-            margin-top: 30px; 
-            background: var(--spotify); 
-            color: black; 
-            width: auto; 
-            padding: 14px 40px; 
-            box-shadow: 0 0 20px rgba(30, 215, 96, 0.4);
-        }
 
         @media (max-width: 480px) {
             .card { padding: 25px 20px; border-radius: 24px; }
             .app-description h1 { font-size: 24px; }
             .buckets-container { flex-direction: column; height: auto; }
             .bucket { height: 250px; }
+        }
+
+        @media (max-width: 768px) {
+            input, select, textarea {
+                font-size: 16px !important;
+            }
+        }
+
+        .input-hint {
+            display: block;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: -15px; /* Pulls it closer to the input above */
+            margin-bottom: 20px;
+            padding-left: 5px;
+            line-height: 1.4;
+        }
+
+        /* Ensure bold text in hints stands out slightly */
+        .input-hint b {
+            color: var(--text-main);
+        }
+
+        /* On mobile, give hints a bit more breathing room */
+        @media (max-width: 480px) {
+            .input-hint {
+                font-size: 10px;
+                margin-top: -12px;
+            }
         }
     </style>
 </head>
@@ -751,10 +837,18 @@ app.get('/', (req, res) => {
             <button id="btn_yt" style="background:var(--yt); color:white; display:none;">Login with YouTube</button>
             
             <label for="playlistUrl" style="font-size: 12px; color: var(--spotify); margin-top: 15px; display: block;">1. Paste Your Spotify Playlist Link</label>
-            <input id="playlistUrl" type="url" placeholder="Playlist URL e.g. https://open.spotify.com/playlist/... or LIKED for liked songs">
+            <input id="playlistUrl" type="url" placeholder="Paste link here...">
+            <span class="input-hint">
+                Examples: <b>https://open.spotify.com/playlist/...</b> or type <b>LIKED</b> for your liked songs.
+            </span>
             
-            <label for="existingId" style="font-size: 12px; color: var(--yt); display: block;">2. Target YouTube Playlist Link or ID (Optional)</label>
-            <input id="existingId" type="text" placeholder="Paste YouTube Playlist Link or Playlist ID">
+            <label for="existingId" style="font-size: 12px; color: var(--yt); display: block;">2. Target YouTube Playlist (Optional)</label>
+            <input id="existingId" type="text" placeholder="Paste link or ID here...">
+            <span class="input-hint">
+                Leave blank for a new playlist. <br>
+                <b>Link: </b>https://www.youtube.com/playlist?list=...<br>
+                <b>ID: </b> PL_x6u_8jG0f7H...
+            </span>
             
             <div class="progress-container" id="p_container"><div class="progress-fill" id="p_fill"></div></div>
             <button id="convert" style="background:black; color:white; margin-top:20px;">Convert Playlist Now</button>
@@ -778,10 +872,10 @@ app.get('/', (req, res) => {
     </div>
 
 <script>
-// Ensure the reload button works reliably
-document.getElementById('reload-page').onclick = function() {
-    window.location.href = window.location.origin;
-};
+    // Ensure the reload button works reliably
+    document.getElementById('reload-page').onclick = function() {
+        window.location.href = window.location.origin;
+    };
     let isConverting = false;
 
     window.addEventListener('message', (event) => {
@@ -806,7 +900,7 @@ document.getElementById('reload-page').onclick = function() {
                 container.innerHTML += \`
                     <div class="user-row spotify">
                         <div class="user-info">
-                            <img src="\${data.spotify.image || ''}" crossorigin="anonymous" onerror="this.style.display='none'">
+                            <img src="\${data.spotify.image || ''}" crossorigin="anonymous" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/9/99/Sample_User_Icon.png'">
                             <div><span class="platform-label">Spotify Account</span>\${data.spotify.name}</div>
                         </div>
                         <a href="/auth/logout/spotify" class="logout">Disconnect</a>
@@ -818,7 +912,7 @@ document.getElementById('reload-page').onclick = function() {
                 container.innerHTML += \`
                     <div class="user-row youtube">
                         <div class="user-info">
-                            <img src="\${data.youtube.image || ''}" crossorigin="anonymous" onerror="this.style.display='none'">
+                            <img src="\${data.youtube.image || ''}" crossorigin="anonymous" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/9/99/Sample_User_Icon.png'">
                             <div><span class="platform-label">YouTube Account</span>\${data.youtube.name}</div>
                         </div>
                         <a href="/auth/logout/youtube" class="logout">Disconnect</a>
@@ -833,7 +927,12 @@ document.getElementById('reload-page').onclick = function() {
         const w = 500, h = 600;
         const left = (screen.width/2)-(w/2);
         const top = (screen.height/2)-(h/2);
-        window.open(url, title, \`width=\${w},height=\${h},top=\${top},left=\${left}\`);
+        const popup = window.open(url, title, \`width=\${w},height=\${h},top=\${top},left=\${left}\`);
+    
+        // Check if popup was blocked
+        if(!popup || popup.closed || typeof popup.closed=='undefined') { 
+            alert("Please enable popups for this site to log in."); 
+        }
     }
 
     document.getElementById('btn_sp').onclick = () => openAuth('/auth/spotify', 'SpotifyLogin');
@@ -859,7 +958,9 @@ document.getElementById('reload-page').onclick = function() {
                 document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
             }
             if(d.done) { source.close(); showOverlay(d.url, s, f); }
-            if(d.error) { alert(d.error); location.reload(); }
+            if(d.error) {
+                source.close(); // Close connection first
+                alert(d.error); location.reload(); }
         };
     };
 
@@ -868,28 +969,26 @@ document.getElementById('reload-page').onclick = function() {
         document.getElementById('overlay').style.display = 'flex';
         let playlistId = "";
         try {
-            const urlObj = new URL(url);
-            playlistId = urlObj.searchParams.get("list");
+            // Handle both full URLs and IDs
+            if (url.includes('list=')) {
+                playlistId = new URL(url).searchParams.get("list");
+            } else {
+                playlistId = url;
+            }
         } catch(e) { console.log("URL parse error", e); }
     
+    const currentOrigin = window.location.origin;
+    
     document.getElementById('final-link').innerHTML = \`
-            <div style="width:100%; border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
-                <iframe 
-                    width="100%" 
-                    height="200" 
-                    src="https://www.youtube.com/embed/videoseries?list=\${playlistId}" 
-                    title="YouTube playlist player" 
-                    frameborder="0" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                    allowfullscreen>
-                </iframe>
-            </div>
-            <a href="\${url}" target="_blank" class="logout" style="margin-top:10px; border:1px solid var(--spotify); color:var(--spotify); font-size:14px; padding:8px 16px; background:rgba(0,0,0,0.5);">
-                Open in YouTube App ↗
-            </a>
-        \`;
+        <a href="https://www.youtube.com/playlist?list=\${playlistId}" target="_blank" class="logout" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; font-size:13px; padding:10px 20px; width:auto; display:inline-block;">
+            Open in YouTube App ↗
+        </a>
+    \`;
         document.getElementById('success-count').innerText = s.length;
         document.getElementById('failed-count').innerText = f.length;
+        // FIX: Clear previous results before adding new ones
+    document.getElementById('success-list').innerHTML = '';
+    document.getElementById('failed-list').innerHTML = '';
         s.forEach(t => document.getElementById('success-list').innerHTML += \`<li>\${t}</li>\`);
         f.forEach(t => document.getElementById('failed-list').innerHTML += \`<li>\${t}</li>\`);
     }
