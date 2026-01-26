@@ -1109,14 +1109,10 @@ width: 300px;
             let sLinked = !!data.spotify;
             let yLinked = !!data.youtube;
 
-            const safeImage = data.spotify.image
+            if(sLinked) {
+                const safeImage = data.spotify.image
   ? \`/img-proxy?url=\${encodeURIComponent(data.spotify.image)}\`
   : '/default-avatar.png';
-
-            const ytImage = data.youtube.image
-  ? \`/img-proxy?url=\${encodeURIComponent(data.youtube.image)}\`
-  : '/default-avatar.png';
-            if(sLinked) {
                 document.getElementById('btn_sp').style.display = 'none';
                 container.innerHTML += \`
                     <div class="user-row spotify">
@@ -1129,6 +1125,9 @@ width: 300px;
             } else { document.getElementById('btn_sp').style.display = 'block'; }
             
             if(yLinked) {
+                const ytImage = data.youtube.image
+  ? \`/img-proxy?url=\${encodeURIComponent(data.youtube.image)}\`
+  : '/default-avatar.png';
                 document.getElementById('btn_yt').style.display = 'none';
                 container.innerHTML += \`
                     <div class="user-row youtube">
