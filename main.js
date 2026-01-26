@@ -47,7 +47,7 @@ app.use(helmet({
             "script-src": ["'self'", "'unsafe-inline'"],
             "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             // Allow images from Spotify and Google/YouTube for user profiles
-            "img-src": ["'self'", "https://*.scdn.co", "https://*.googleusercontent.com", "https://*.ytimg.com", "data:"]
+            "img-src": ["'self'", "https://*.scdn.co", "https://*.googleusercontent.com", "https://*.ytimg.com", "data:", "platform-lookaside.fbsbx.com", "cdn.pixabay.com", "yt3.ggpht.com"]
         }
     },
     crossOriginOpenerPolicy: { policy: "unsafe-none" }
@@ -445,6 +445,53 @@ app.get('/meta/spotify', async (req, res) => {
     }
 });
 
+const fetch = require('node-fetch');
+app.get('/img-proxy', async (req, res) => {
+  const imageUrl = req.query.url;
+
+  if (!imageUrl) {
+    return res.status(400).send('Missing image url');
+  }
+
+  // SECURITY: whitelist allowed domains
+  const allowedHosts = [
+    'platform-lookaside.fbsbx.com',
+    'i.scdn.co',
+    'cdn.pixabay.com',
+    'lh3.googleusercontent.com'
+  ];
+
+  let parsed;
+  try {
+    parsed = new URL(imageUrl);
+  } catch {
+    return res.status(400).send('Invalid URL');
+  }
+
+  if (!allowedHosts.includes(parsed.hostname)) {
+    return res.status(403).send('Host not allowed');
+  }
+
+  try {
+    const response = await fetch(imageUrl);
+
+    if (!response.ok) {
+      return res.sendStatus(502);
+    }
+
+    res.setHeader(
+      'Content-Type',
+      response.headers.get('content-type') || 'image/jpeg'
+    );
+
+    response.body.pipe(res);
+  } catch (err) {
+    console.error('Image proxy error:', err);
+    res.sendStatus(500);
+  }
+});
+
+
 // --- REAL-TIME CONVERSION ROUTE ---
 app.get('/stream-convert', async (req, res) => {
     req.on('close', () => {
@@ -560,8 +607,8 @@ app.get('/stream-convert', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send(`<!doctype html>
-<html>
+    res.send(`<!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -1062,12 +1109,19 @@ width: 300px;
             let sLinked = !!data.spotify;
             let yLinked = !!data.youtube;
 
+            const safeImage = data.spotify.image
+  ? \`/img-proxy?url=\${encodeURIComponent(data.spotify.image)}\`
+  : '/default-avatar.png';
+
+            const ytImage = data.youtube.image
+  ? \`/img-proxy?url=\${encodeURIComponent(data.youtube.image)}\`
+  : '/default-avatar.png';
             if(sLinked) {
                 document.getElementById('btn_sp').style.display = 'none';
                 container.innerHTML += \`
                     <div class="user-row spotify">
                         <div class="user-info">
-                            <img src="\${data.spotify.image || ''}" class="profile-pic">
+                            <img src="\${safeImage}" class="profile-pic">
                             <div><span class="platform-label">Spotify Account</span>\${data.spotify.name}</div>
                         </div>
                         <a href="/auth/logout/spotify" class="logout">Disconnect</a>
@@ -1079,7 +1133,7 @@ width: 300px;
                 container.innerHTML += \`
                     <div class="user-row youtube">
                         <div class="user-info">
-                            <img src="\${data.youtube.image || ''}" class="profile-pic">
+                            <img src="\${ytImage}" class="profile-pic">
                             <div><span class="platform-label">YouTube Account</span>\${data.youtube.name}</div>
                         </div>
                         <a href="/auth/logout/youtube" class="logout">Disconnect</a>
@@ -1253,4 +1307,5 @@ width: 300px;
 </body>
 </html>`);
 });
+
 app.listen(PORT, () => console.log(`TuneChange running on port ${PORT}`));
