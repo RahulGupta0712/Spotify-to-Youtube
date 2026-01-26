@@ -458,7 +458,8 @@ app.get('/img-proxy', async (req, res) => {
     'platform-lookaside.fbsbx.com',
     'i.scdn.co',
     'cdn.pixabay.com',
-    'lh3.googleusercontent.com'
+    'lh3.googleusercontent.com',
+    'yt3.ggpht.com'
   ];
 
   let parsed;
