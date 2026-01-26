@@ -573,7 +573,7 @@ app.get('/', (req, res) => {
     <meta name="author" content="TuneChange">
     <link rel="canonical" href="https://tunechange.xyz/" />
 
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content:; style-src * 'self' 'unsafe-inline'; media-src *; img-src * 'self' data: content: https://i.scdn.co https://*.scdn.co https://*.googleusercontent.com https://*.ytimg.com https://*.ggpht.com https://*.fbsbx.com; frame-src * https://www.youtube.com https://youtube.com https://*.youtube.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content:; style-src * 'self' 'unsafe-inline'; media-src *; img-src * 'self' data: content: https://i.scdn.co https://*.scdn.co https://*.googleusercontent.com https://*.ytimg.com https://*.ggpht.com https://*.fbsbx.com https://*.fbcdn.net; frame-src * https://www.youtube.com https://youtube.com https://*.youtube.com;">
 
     <meta name="google-site-verification" content="uPuIXy59PtPLIaJ5lMmqSb8Rm6X2TJtjyUkzKJ_NE0o" />
     <style>
@@ -1069,7 +1069,7 @@ width: 300px;
                 container.innerHTML += \`
                     <div class="user-row spotify">
                         <div class="user-info">
-                            <img src="\${data.spotify.image || ''}" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/9/99/Sample_User_Icon.png'">
+                            <img src="\${data.spotify.image || ''}" class="profile-pic">
                             <div><span class="platform-label">Spotify Account</span>\${data.spotify.name}</div>
                         </div>
                         <a href="/auth/logout/spotify" class="logout">Disconnect</a>
@@ -1081,7 +1081,7 @@ width: 300px;
                 container.innerHTML += \`
                     <div class="user-row youtube">
                         <div class="user-info">
-                            <img src="\${data.youtube.image || ''}" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/9/99/Sample_User_Icon.png'">
+                            <img src="\${data.youtube.image || ''}" class="profile-pic">
                             <div><span class="platform-label">YouTube Account</span>\${data.youtube.name}</div>
                         </div>
                         <a href="/auth/logout/youtube" class="logout">Disconnect</a>
@@ -1251,6 +1251,11 @@ width: 300px;
         s.forEach(t => document.getElementById('success-list').innerHTML += \`<li>\${t}</li>\`);
         f.forEach(t => document.getElementById('failed-list').innerHTML += \`<li>\${t}</li>\`);
     }
+    document.addEventListener('error', function (e) {
+        if (e.target.tagName.toLowerCase() === 'img') {
+            e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/9/99/Sample_User_Icon.png';
+        }
+    }, true);
 </script>
 </body>
 </html>`);
