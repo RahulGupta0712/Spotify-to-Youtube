@@ -203,7 +203,7 @@ app.get('/privacy', (req, res) => {
         <body>
             <a href="/" class="back">← Back to App</a>
             <h1>Privacy Policy</h1>
-            <p><strong>Last Updated:</strong> January 24, 2026</p>
+            <p><strong>Last Updated:</strong> January 26, 2026</p>
 
             <div class="legal-box">
                 <p><strong>Summary:</strong> TuneChange is a data migration tool. We do not sell your data. We do not store your music history permanently. We only use your data to perform the transfer you requested.</p>
@@ -237,20 +237,28 @@ app.get('/privacy', (req, res) => {
                 <li>We <strong>do not</strong> use your data to train AI models.</li>
             </ul>
 
-            <h2>5. Data Retention</h2>
+            <h2>5. Sharing and Disclosure of Data</h2>
+            <p>TuneChange is designed to be a private, direct-to-user tool. We do not sell, rent, or trade your Google user data. Data is only shared in the following ways:</p>
+            <ul>
+                <li><strong>Functional Transfer:</strong> Your data is sent directly to YouTube via their API to create your playlist. This is the core function of the app.</li>
+                <li><strong>No Third-Party Sharing:</strong> We do not share Google user data with any third-party developers, researchers, or advertisers.</li>
+                <li><strong>Legal Compliance:</strong> As required by law, we would only disclose data if legally compelled. However, because we <strong>do not store your data</strong> on our servers, we typically have no user data to provide even upon legal request.</li>
+            </ul>
+
+            <h2>6. Data Retention</h2>
             <p>We practice data minimization. User data is retained only for the duration of your active session to facilitate the migration. Operational logs (used for debugging) are anonymized and do not contain personally identifiable music history.</p>
 
-            <h2>6. Third-Party Services</h2>
+            <h2>7. Third-Party Services</h2>
             <p>TuneChange uses <strong>YouTube API Services</strong>. By using this app, you verify that you have read and agreed to the:</p>
             <ul>
                 <li><a href="https://www.youtube.com/t/terms" target="_blank">YouTube Terms of Service</a></li>
                 <li><a href="http://www.google.com/policies/privacy" target="_blank">Google Privacy Policy</a></li>
             </ul>
 
-            <h2>7. Revoking Access</h2>
+            <h2>8. Revoking Access</h2>
             <p>You may revoke TuneChange's access to your data at any time via the <a href="https://security.google.com/settings/security/permissions" target="_blank">Google Security Settings</a> page.</p>
 
-            <h2>8. Contact</h2>
+            <h2>9. Contact</h2>
             <p>If you have questions about this policy or your data security, please contact us at: <span class="highlight">viratrahul0718@gmail.com</span></p>
         </body>
         </html>
@@ -402,8 +410,42 @@ app.get('/oauth2callback', async (req, res) => {
     } catch (e) { res.send('Error logging in'); }
 });
 
-// --- REAL-TIME CONVERSION ROUTE ---
+// NEW: Helper endpoint to fetch Spotify metadata for the UI
+app.get('/meta/spotify', async (req, res) => {
+    try {
+        const { url } = req.query;
+        if (!req.session.spotifyTokens) return res.status(401).json({ error: 'Login required' });
 
+        // Basic parsing of Spotify ID (matches standard URL or URI)
+        let playlistId = null;
+        if (url === 'LIKED') playlistId = 'LIKED';
+        else {
+            const match = url.match(/playlist[:/]([a-zA-Z0-9]+)/);
+            if (match) playlistId = match[1];
+        }
+
+        if (!playlistId) return res.status(400).json({ error: 'Invalid URL' });
+
+        // If Liked Songs, return static name
+        if (playlistId === 'LIKED') return res.json({ name: "Liked Songs" });
+
+        // Fetch from Spotify API
+        const spToken = req.session.spotifyTokens.access_token;
+        const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+            headers: { Authorization: `Bearer ${spToken}` }
+        });
+
+        if (!response.ok) throw new Error("Spotify API Error");
+        
+        const data = await response.json();
+        res.json({ name: data.name });
+
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// --- REAL-TIME CONVERSION ROUTE ---
 app.get('/stream-convert', async (req, res) => {
     req.on('close', () => {
         // This stops the server from continuing the loop if the user closes the tab
@@ -416,7 +458,7 @@ app.get('/stream-convert', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
 
     const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
-    const { playlistUrl, existingId } = req.query;
+    const { playlistUrl, existingId, customTitle, privacy } = req.query;
 
     try {
         let stats = { success: 0, fail: 0, total: 0, quotaEstimated: 0 };
@@ -444,8 +486,6 @@ app.get('/stream-convert', async (req, res) => {
             const urlParams = new URLSearchParams(ytId.split('?')[1]);
             ytId = urlParams.get('list');
         }
-
-
         
         // Just verify ID existence to support Brand Accounts/Shared Playlists properly.
         if (ytId) {
@@ -471,20 +511,14 @@ app.get('/stream-convert', async (req, res) => {
         // Create new playlist if no ID provided
         if (!ytId) {
             stats.quotaEstimated += 50; // Cost of creating the playlist itself
-            let title = "TuneChange Playlist";
+            let title = customTitle || "TuneChange Playlist";
             // Attempt to fetch Spotify playlist name
+            
             if (playlistId === 'LIKED') title = "Liked Songs";
-            else {
-                try {
-                    const m = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, { headers: { Authorization: `Bearer ${spToken}` } });
-                    const d = await m.json();
-                    if (d.name) title = d.name;
-                } catch (e) { console.log("Name fetch failed, using default"); }
-            }
 
             const p = await youtube.playlists.insert({
                 part: 'snippet,status',
-                requestBody: { snippet: { title: title }, status: { privacyStatus: 'private' } }
+                requestBody: { snippet: { title: title }, status: { privacyStatus: privacy || 'private' } }
             });
             ytId = p.data.id;
         }
@@ -906,6 +940,30 @@ width: 300px;
                 margin-top: -12px;
             }
         }
+
+        /* Styling for the Privacy Dropdown and New Settings Area */
+#new-playlist-settings {
+    transition: opacity 0.3s ease;
+}
+
+#privacySelect {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23333' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 4 4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 15px center;
+    padding-right: 40px;
+}
+
+#privacySelect:focus {
+    outline: none;
+    border-color: var(--yt);
+    box-shadow: 0 0 25px rgba(255, 0, 0, 0.1);
+}
+
+#useSpotifyName {
+    accent-color: var(--spotify); /* Colors the checkbox green */
+    transform: scale(1.2);
+}
     </style>
 </head>
 <body>
@@ -936,9 +994,30 @@ width: 300px;
             <input id="existingId" type="text" placeholder="Paste link or ID here..." autocomplete="off">
             <span class="input-hint">
                 Leave blank for a new playlist. <br>
+                Examples: <br>
                 <b>Link: </b>https://www.youtube.com/playlist?list=...<br>
                 <b>ID: </b> PL_x6u_8jG0f7H...
             </span>
+
+            <div id="new-playlist-settings">
+                <div style="margin-top: 20px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 15px;"></div>
+                
+                <label style="font-size: 12px; color: var(--text-main); display: block; margin-bottom:5px;">3. New Playlist Details</label>
+                
+                <input id="customTitle" type="text" placeholder="Enter New Playlist Title" autocomplete="off" style="margin-bottom: 5px;">
+                
+                <div style="display: flex; align-items: center; margin-bottom: 15px; font-size: 13px; color: var(--text-muted);">
+                    <input type="checkbox" id="useSpotifyName" style="width: auto; margin: 0 8px 0 5px;">
+                    <label for="useSpotifyName" style="margin: 0; text-transform: none; cursor:pointer;">Copy name from Spotify</label>
+                </div>
+
+                <label for="privacySelect" style="font-size: 11px; margin-bottom: 5px; display:block;">Privacy Setting</label>
+                <select id="privacySelect" style="width: 100%; padding: 16px; border-radius: 16px; border: 1px solid var(--glass-border); background: rgba(255, 255, 255, 0.5); backdrop-filter: blur(5px); color: #000; appearance: none; -webkit-appearance: none;">
+                    <option value="private">🔒 Private (Only you can view)</option>
+                    <option value="public">🌐 Public (Everyone can view)</option>
+                    <option value="unlisted">🔗 Unlisted (Anyone with link)</option>
+                </select>
+            </div>
             
             <div class="progress-container" id="p_container"><div class="progress-fill" id="p_fill"></div></div>
             <button id="convert" style="background:black; color:white; margin-top:20px;">Convert Playlist Now</button>
@@ -990,7 +1069,7 @@ width: 300px;
                 container.innerHTML += \`
                     <div class="user-row spotify">
                         <div class="user-info">
-                            <img src="\${data.spotify.image || ''}" crossorigin="anonymous" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/9/99/Sample_User_Icon.png'">
+                            <img src="\${data.spotify.image || ''}" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/9/99/Sample_User_Icon.png'">
                             <div><span class="platform-label">Spotify Account</span>\${data.spotify.name}</div>
                         </div>
                         <a href="/auth/logout/spotify" class="logout">Disconnect</a>
@@ -1002,7 +1081,7 @@ width: 300px;
                 container.innerHTML += \`
                     <div class="user-row youtube">
                         <div class="user-info">
-                            <img src="\${data.youtube.image || ''}" crossorigin="anonymous" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/9/99/Sample_User_Icon.png'">
+                            <img src="\${data.youtube.image || ''}" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/9/99/Sample_User_Icon.png'">
                             <div><span class="platform-label">YouTube Account</span>\${data.youtube.name}</div>
                         </div>
                         <a href="/auth/logout/youtube" class="logout">Disconnect</a>
@@ -1012,6 +1091,85 @@ width: 300px;
     }
     
     updateProfiles();
+
+    const existingIdInput = document.getElementById('existingId');
+    const newSettingsDiv = document.getElementById('new-playlist-settings');
+    const customTitleInput = document.getElementById('customTitle');
+    const spotifyNameCheckbox = document.getElementById('useSpotifyName');
+
+    function toggleSettings() {
+        if (existingIdInput.value.trim() !== "") {
+            newSettingsDiv.style.opacity = '0.3';
+            newSettingsDiv.style.pointerEvents = 'none'; // Disable interaction
+        } else {
+            newSettingsDiv.style.opacity = '1';
+            newSettingsDiv.style.pointerEvents = 'auto';
+        }
+    }
+
+    // 1. Reset checkbox if user changes the Spotify URL
+    document.getElementById('playlistUrl').addEventListener('input', () => {
+        spotifyNameCheckbox.checked = false;
+        // Reset the title input to normal state
+        customTitleInput.disabled = false;
+        customTitleInput.style.background = "rgba(255, 255, 255, 0.5)";
+        customTitleInput.value = ''; 
+    });
+
+    // Toggle Title Input based on Checkbox
+    spotifyNameCheckbox.addEventListener('change', async (e) => {
+        if (e.target.checked) {
+            const urlVal = document.getElementById('playlistUrl').value;
+            
+            // Validation: Must have a URL first
+            if (!urlVal) {
+                alert("Please enter a Spotify Playlist URL first.");
+                e.target.checked = false;
+                return;
+            }
+
+            // Visual feedback: Loading state
+            customTitleInput.value = "Fetching name...";
+            customTitleInput.disabled = true; // Lock it while fetching
+            customTitleInput.style.background = "rgba(255, 255, 255, 0.2)";
+
+            try {
+                // Call our new backend endpoint
+                const res = await fetch(\`/meta/spotify?url=\${encodeURIComponent(urlVal)}\`);
+                const data = await res.json();
+                
+                if (data.name) {
+                    customTitleInput.value = data.name;
+                    // Keep disabled so they don't edit it, but make it look clean (read-only style)
+                    customTitleInput.style.background = "rgba(30, 215, 96, 0.1)"; // Light green tint
+                    customTitleInput.style.borderColor = "var(--spotify)";
+                    customTitleInput.style.color = "var(--text-main)";
+                } else {
+                    throw new Error("No name returned");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Could not fetch playlist name. Please type it manually.");
+                // Revert to manual mode on error
+                e.target.checked = false;
+                customTitleInput.value = "";
+                customTitleInput.disabled = false;
+                customTitleInput.style.background = "rgba(255, 255, 255, 0.5)";
+                customTitleInput.focus();
+            }
+        } else {
+            // Unchecked: Reset to manual entry mode
+            customTitleInput.disabled = false;
+            customTitleInput.value = "";
+            customTitleInput.placeholder = "Enter New Playlist Title";
+            customTitleInput.style.background = "rgba(255, 255, 255, 0.5)";
+            customTitleInput.style.borderColor = "var(--glass-border)";
+        }
+    });
+
+    existingIdInput.addEventListener('input', toggleSettings);
+    // Run once on load in case browser cached values
+    toggleSettings();
 
     function openAuth(url, title) {
         const w = 500, h = 600;
@@ -1031,11 +1189,22 @@ width: 300px;
     document.getElementById('convert').onclick = () => {
         const url = document.getElementById('playlistUrl').value;
         if(!url) return alert("Enter a Spotify URL");
+        const existingId = document.getElementById('existingId').value;
+        
+        // NEW: Get values
+        let customTitle = document.getElementById('customTitle').value;
+        const privacy = document.getElementById('privacySelect').value;
+        
+        // If checkbox is checked, ensure title is empty string so backend knows to fetch it
+        if(document.getElementById('useSpotifyName').checked) {
+            customTitle = ""; 
+        }
+        
         isConverting = true;
         document.getElementById('convert').disabled = true;
         document.getElementById('p_container').style.display = 'block';
         
-        const source = new EventSource(\`/stream-convert?playlistUrl=\${encodeURIComponent(url)}&existingId=\${document.getElementById('existingId').value}\`);
+        const source = new EventSource(\`/stream-convert?playlistUrl=\${encodeURIComponent(url)}&existingId=\${encodeURIComponent(existingId)}&customTitle=\${encodeURIComponent(customTitle)}&privacy=\${encodeURIComponent(privacy)}\`);
         let s = [], f = [], total = 0;
 
         source.onmessage = (e) => {
